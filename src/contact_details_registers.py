@@ -10,6 +10,8 @@ Usage:
     python contact_details_registers.py
 """
 
+import tkinter as tk
+from tkinter import messagebox
 import datetime
 import openpyxl
 import pandas as pd
