@@ -1,51 +1,17 @@
-"""
-Filename: retrieving_contact_details_from_registers.py
-Description: This script automates the process of getting name and
-             contact details from Marc Beckles' coaching registers.
-Author: Otto Sterner
-Date: 22-May-2024
-Version: 1.0.0
-
-Usage:
-    python contact_details_registers.py
-"""
-
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, filedialog
 import datetime
 import openpyxl
 import pandas as pd
 
 # Constants
-REGISTERS_PATH = (
-    "C:\\Users\\Otto\\OneDrive\\Tennis\\Automation\\files\\week-registers-test"
-)
-TARGET_EMAIL_LIST = (
-    "C:\\Users\\Otto\\OneDrive\\Tennis\\Automation\\files\\output-contacts\\"
-)
 DAYS_OF_WEEK = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 VALID_SESSION_TYPES = [
-    "tots",
-    "red 1",
-    "red 2",
-    "red 3",
-    "orange 1",
-    "orange 2",
-    "green 1",
-    "green 2",
-    "yellow 1",
-    "yellow 2",
-    "yellow 3",
-    "bronze",
-    "bronze plus",
-    "silver",
-    "gold",
-    "platinum",
-    "perf",
-    "perf 2",
+    "tots", "red 1", "red 2", "red 3", "orange 1", "orange 2",
+    "green 1", "green 2", "yellow 1", "yellow 2", "yellow 3",
+    "bronze", "bronze plus", "silver", "gold", "platinum", "perf", "perf 2"
 ]
 VALID_SEASONS = ["spring", "summer", "autumn", "winter"]
-
 
 def read_contacts_table(file_path, sheet_name):
     """
@@ -86,14 +52,13 @@ def read_contacts_table(file_path, sheet_name):
             contacts_dataframe = contacts_dataframe.iloc[: first_empty_index[0]]
 
     except Exception as e:
-        print("Error reading the contacts, error message: " + str(e))
+        messagebox.showerror("Error", f"Error reading the contacts: {str(e)}")
         exit()
 
     return contacts_dataframe
 
-
 def get_contact_details_from_registers(
-        season_of_year, coaching_type_sheet, year):
+        registers_path, season_of_year, coaching_type_sheet, year):
     """
     This will cycle through each of the registers and get the contact details
     of each person in the session
@@ -107,98 +72,148 @@ def get_contact_details_from_registers(
         contacts_data_frame (DataFrame): A pandas DataFrame containing the
         contact details of each person in the session
     """
-    # Data frame of contacts
-    contacts_data_frame = pd.DataFrame(
-        columns=["Day of Week", "full name", "email"])
+    try:
+        # Data frame of contacts
+        contacts_data_frame = pd.DataFrame(
+            columns=["Day of Week", "full name", "email"])
 
-    # Cycle through each of the days of the week / sheets
-    for day in DAYS_OF_WEEK:
+        # Cycle through each of the days of the week / sheets
+        for day in DAYS_OF_WEEK:
 
-        # Open the register sheet
-        registers = f"{REGISTERS_PATH}\\{day} {season_of_year} {year}.xlsx"
-        print(f"Opening file at: {registers}")
-        wb = openpyxl.load_workbook(registers, read_only=True)
+            # Open the register sheet
+            registers = f"{registers_path}\\{day} {season_of_year} {year}.xlsx"
+            print(f"Opening file at: {registers}")
+            wb = openpyxl.load_workbook(registers, read_only=True)
 
-        # Find the sheet that contains the session type in its name
-        sheet_names = [
-            sheet for sheet in wb.sheetnames if coaching_type_sheet in sheet]
+            # Find the sheet that contains the session type in its name
+            sheet_names = [sheet for sheet in wb.sheetnames if coaching_type_sheet.lower() in sheet.lower()]
 
-        # Cycle through each of the sheets
-        for sheet_name in sheet_names:
-            # Call the read contacts table function
-            contacts = read_contacts_table(registers, sheet_name)
-            # Add the day of the week to the contacts data frame
-            contacts["Day of Week"] = day
-            # Remove duplicate columns in contacts_data_frame
-            contacts_data_frame = contacts_data_frame.loc[
-                :, ~contacts_data_frame.columns.duplicated()
-            ]
-            # Remove duplicate columns in contacts
-            contacts = contacts.loc[:, ~contacts.columns.duplicated()]
-            contacts = contacts.reset_index(drop=True)
-            # Concatenate the contacts data frame
-            contacts_data_frame = pd.concat(
-                [contacts_data_frame, contacts], ignore_index=True
-            )
+            # Cycle through each of the sheets
+            for sheet_name in sheet_names:
+                # Call the read contacts table function
+                contacts = read_contacts_table(registers, sheet_name)
+                # Add the day of the week to the contacts data frame
+                contacts["Day of Week"] = day
+                # Remove duplicate columns in contacts_data_frame
+                contacts_data_frame = contacts_data_frame.loc[
+                    :, ~contacts_data_frame.columns.duplicated()
+                ]
+                # Remove duplicate columns in contacts
+                contacts = contacts.loc[:, ~contacts.columns.duplicated()]
+                contacts = contacts.reset_index(drop=True)
+                # Concatenate the contacts data frame
+                contacts_data_frame = pd.concat(
+                    [contacts_data_frame, contacts], ignore_index=True
+                )
+    except Exception as e:
+        messagebox.showerror("Error", f"Error in get_contact_details_from_registers: {str(e)}")
+        exit()
+
     return contacts_data_frame
 
+def run_script(registers_path, output_path, season, session_type):
+    """
+    Execute the main script to retrieve contact details and save them to a CSV file.
 
-if __name__ == "__main__":
-    # Input the season
-    SEASON = ""
-    while SEASON.lower() not in VALID_SEASONS:
-        SEASON = input(
-            """
-        Please enter the season, the choices are:
-        - Spring
-        - Summer
-        - Autumn
-        - Winter
-        Your Choice: """
-        )
-        if SEASON.lower() not in VALID_SEASONS:
-            print("Invalid choice. Please enter a valid season.")
+    Args:
+        registers_path (str): The directory path where the registers are located.
+        output_path (str): The directory path where the output CSV file will be saved.
+        season (str): The season of the year (e.g., 'spring', 'summer', 'autumn', 'winter').
+        session_type (str): The type of coaching session (e.g., 'tots', 'red 1', 'green 2').
 
-    # Input the session type
-    SESSION_TYPE = ""
-    while SESSION_TYPE.lower() not in VALID_SESSION_TYPES:
-        SESSION_TYPE = input(
-            f"""
-        Enter the session type:
-        Options: {', '.join(VALID_SESSION_TYPES).title()}
-        Your Choice: """
-        )
-        if SESSION_TYPE.lower() not in VALID_SESSION_TYPES:
-            print("Invalid choice. Please enter a valid session type.")
-
-    # Get the current year and date
+    Returns:
+        None
+    """
     current_year = datetime.datetime.now().year
     current_date = datetime.datetime.now().strftime("%Y-%m-%d")
+    contacts_df = get_contact_details_from_registers(registers_path, season, session_type, current_year)
+    if contacts_df is not None:
+        target_contacts_filename = f"{output_path}/contacts_list_{session_type}_{season}_{current_date}.csv"
+        contacts_df.to_csv(target_contacts_filename, index=False)
+        messagebox.showinfo("Success", f"Contacts have been successfully saved to: {target_contacts_filename}")
+    else:
+        messagebox.showerror("Error", "Failed to create the contacts data frame.")
 
-    # Call function to retrive the contact details from all of the registers
-    contacts_df = get_contact_details_from_registers(
-        SEASON, SESSION_TYPE, current_year)
+def select_registers_path():
+    """
+    Open a dialog to select the directory containing the registers.
 
-    # Print the contacts data frame
-    print("The contacts data frame is:")
-    print(contacts_df)
-    print(
-        "The data frame has been successfully created, the contacts will be saved to a csv file."
-    )
+    Args:
+        None
 
-    # Write the output data frame to a csv
-    target_contacts_filename = (
-        TARGET_EMAIL_LIST
-        + "contacts_list_"
-        + SESSION_TYPE
-        + "_"
-        + SEASON
-        + "_"
-        + current_date
-        + ".csv"
-    )
+    Returns:
+        None
+    """
+    path = filedialog.askdirectory(title="Select Registers Directory")
+    if path:
+        registers_path_var.set(path)
 
-    print("Saving the contacts to: " + target_contacts_filename)
-    contacts_df.to_csv(target_contacts_filename, index=False)
+def select_output_path():
+    """
+    Open a dialog to select the directory where the output CSV will be saved.
 
-    print("The contacts have been successfully saved to a csv file.")
+    Args:
+        None
+
+    Returns:
+        None
+    """
+    path = filedialog.askdirectory(title="Select Output Directory")
+    if path:
+        output_path_var.set(path)
+
+def on_button_click():
+    """
+    Handle the button click event to run the script with user inputs.
+
+    Args:
+        None
+
+    Returns:
+        None
+    """
+    season = season_var.get().lower()
+    session_type = session_type_var.get().lower()
+    registers_path = registers_path_var.get()
+    output_path = output_path_var.get()
+
+    if season not in VALID_SEASONS:
+        messagebox.showerror("Invalid Input", "Please enter a valid season.")
+        return
+    if session_type not in VALID_SESSION_TYPES:
+        messagebox.showerror("Invalid Input", "Please enter a valid session type.")
+        return
+    if not registers_path:
+        messagebox.showerror("Invalid Input", "Please select the registers directory.")
+        return
+    if not output_path:
+        messagebox.showerror("Invalid Input", "Please select the output directory.")
+        return
+
+    run_script(registers_path, output_path, season, session_type)
+
+# GUI Setup
+root = tk.Tk()
+root.title("Run Contact Details Script")
+
+tk.Label(root, text="Enter Season:").pack(pady=5)
+season_var = tk.StringVar()
+tk.Entry(root, textvariable=season_var).pack(pady=5)
+
+tk.Label(root, text="Enter Session Type:").pack(pady=5)
+session_type_var = tk.StringVar()
+tk.Entry(root, textvariable=session_type_var).pack(pady=5)
+
+tk.Label(root, text="Select Registers Directory:").pack(pady=5)
+registers_path_var = tk.StringVar()
+tk.Entry(root, textvariable=registers_path_var, width=50).pack(pady=5)
+tk.Button(root, text="Browse...", command=select_registers_path).pack(pady=5)
+
+tk.Label(root, text="Select Output Directory:").pack(pady=5)
+output_path_var = tk.StringVar()
+tk.Entry(root, textvariable=output_path_var, width=50).pack(pady=5)
+tk.Button(root, text="Browse...", command=select_output_path).pack(pady=5)
+
+tk.Button(root, text="Run Script", command=on_button_click).pack(pady=20)
+
+root.mainloop()
