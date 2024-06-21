@@ -7,13 +7,15 @@ import pandas as pd
 # Constants
 DAYS_OF_WEEK = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 VALID_SESSION_TYPES = [
-    "tots", "red 1", "red 2", "red 3", "orange 1", "orange 2",
+    "red","green","orange","yellow","adults","tots", "red 1", "red 2", "red 3", "orange 1", "orange 2",
     "green 1", "green 2", "yellow 1", "yellow 2", "yellow 3",
     "bronze", "bronze plus", "silver", "gold", "platinum", "perf", "perf 2"
 ]
 VALID_SEASONS = ["spring", "summer", "autumn", "winter"]
+COLUMN_NAMES = ["Day of Week", "full name", "email"]
+COACHING_CONTACT_COLUMNS = ["full name", "email"]
 
-def read_contacts_table(file_path, sheet_name):
+def read_contacts_table(file_path, sheet_name):    
     """
     Read names table in the contacts sheet
 
@@ -75,7 +77,7 @@ def get_contact_details_from_registers(
     try:
         # Data frame of contacts
         contacts_data_frame = pd.DataFrame(
-            columns=["Day of Week", "full name", "email"])
+            columns=COLUMN_NAMES)
 
         # Cycle through each of the days of the week / sheets
         for day in DAYS_OF_WEEK:
