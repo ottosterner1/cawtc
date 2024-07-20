@@ -7,13 +7,13 @@ import pandas as pd
 # Constants
 DAYS_OF_WEEK = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 VALID_SESSION_TYPES = [
-    "red","green","orange","yellow","adults","tots", "red 1", "red 2", "red 3", "orange 1", "orange 2",
+    "red","green","orange","yellow","junior","adults","tots", "red 1", "red 2", "red 3", "orange 1", "orange 2",
     "green 1", "green 2", "yellow 1", "yellow 2", "yellow 3",
     "bronze", "bronze plus", "silver", "gold", "platinum", "perf", "perf 2"
 ]
 VALID_SEASONS = ["spring", "summer", "autumn", "winter"]
 COLUMN_NAMES = ["Day of Week", "full name", "email"]
-COACHING_CONTACT_COLUMNS = ["full name", "email"]
+COACHING_CONTACT_COLUMNS = ["full name","dob","email"]
 
 def read_contacts_table(file_path, sheet_name):    
     """
@@ -34,16 +34,24 @@ def read_contacts_table(file_path, sheet_name):
         contacts_dataframe.columns = contacts_dataframe.columns.str.lower().str.strip()
 
         # Rename columns that contain 'full name' to 'full name'
-        contacts_dataframe.columns = ['full name' if isinstance(col, str) and 'full name' in col else col for col in contacts_dataframe.columns]
-        contacts_dataframe.columns = ['email' if isinstance(col, str) and 'email' in col else col for col in contacts_dataframe.columns]
+        #contacts_dataframe.columns = ['full name' if isinstance(col, str) and 'full name' in col else col for col in contacts_dataframe.columns]
+        #contacts_dataframe.columns = ['email' if isinstance(col, str) and 'email' in col else col for col in contacts_dataframe.columns]
 
-        contacts_dataframe = contacts_dataframe[
-            [
-                col
+        for target_col in COACHING_CONTACT_COLUMNS:
+            contacts_dataframe.columns = [
+                target_col if isinstance(col, str) and target_col in col else col 
                 for col in contacts_dataframe.columns
-                if "full name" in str(col) or "email" in str(col)
-            ]
         ]
+
+        contacts_dataframe = contacts_dataframe[COACHING_CONTACT_COLUMNS]
+        
+        #contacts_dataframe = contacts_dataframe[
+        #    [
+        #        col
+        #        for col in contacts_dataframe.columns
+        #        if "full name" in str(col) or "email" in str(col)
+        #    ]
+        #]
 
         # Find the index of the first row where "Full name" is NaN and drop all
         # rows after that
