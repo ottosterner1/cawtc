@@ -17,6 +17,9 @@ No arguments are required to run this script. To run the script, use the followi
 
 ## Import the required libraries
 import pandas as pd
+import gspread
+from pydrive.auth import GoogleAuth
+from pydrive.drive import GoogleDrive
 import os
 import sys
 from datetime import datetime, timedelta
@@ -25,6 +28,9 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+############################################
+# Function Definitions
+###########################################
 def send_email(to, cc, subject, body):
     """
     This function sends an email to the specified recipient with the specified subject and body
@@ -39,7 +45,10 @@ def send_email(to, cc, subject, body):
     None
     """
     from_email = "headcoach@wiltontennisclub.co.uk"
-    password = "vmpm entp wbib oyck"
+    
+    # Read the password from a file
+    with open('config/email_password.txt', 'r') as file:
+        password = file.read().strip()
 
     msg = MIMEMultipart()
     msg['From'] = from_email
@@ -169,7 +178,6 @@ def tennis_leaders_check_main(tennis_leader_sheet_name, coach_documents_path, to
         for index, coach in tennis_leaders_to_notify.iterrows():
             name = coach['name']
             email = "ottosterner1@icloud.com"
-            cc_address = ["ottosterner1@gmail.com"]
             # email = coach['parent email']
             # cc_address = to_expiring_email_addresses
             subject = "DBS Registration Reminder"
@@ -177,6 +185,7 @@ def tennis_leaders_check_main(tennis_leader_sheet_name, coach_documents_path, to
                 f"Dear Parent of {name},\n\n"
                 f"{name} has recently turned 16 and is now eligible to complete a DBS check to coach at Wilton Tennis Club. "
                 f"Please complete this as soon as possible.\n\n"
+                f"Please complete the DBS check at the following link: https://www.lta.org.uk/about-us/safeguarding/criminal-record-checks/dbs-application-form/\n\n"
                 f"Once you've done this, please send a copy of your certificate to headcoach@wiltontennisclub.co.uk "
                 f"and CC in coachingadmin@wiltontennisclub.co.uk.\n\n"
                 f"Kind regards,\n"
@@ -203,7 +212,6 @@ def expiring_documents_main(coach_documents_path, course_type_to_check, to_expir
             for index, row in expiring_course_dataframe.iterrows():
                 name = row['name']
                 email = "ottosterner1@icloud.com"
-                cc_address = ["ottosterner1@gmail.com"]
                 #email = row['email address']
                 #cc_address = to_expiring_email_addresses
                 expiry_date = row[course_type].strftime('%d/%m/%Y')
@@ -230,6 +238,7 @@ def expired_documents_main(coach_documents_path, course_type_to_check, to_expire
     course_type_to_check (list): List of course types to check for expiry.
     """
     for sheet_name in main_check_sheet_names:
+        
         # Read the coach documents overview sheet
         coach_documents_pd = read_clean_excel_sheet(coach_documents_path, sheet_name)
 
@@ -239,7 +248,6 @@ def expired_documents_main(coach_documents_path, course_type_to_check, to_expire
             for index, row in expired_course_dataframe.iterrows():
                 name = row['name']
                 email = "ottosterner1@icloud.com"
-                cc_address = ["ottosterner1@gmail.com"]
                 # email = row['email address']
                 # cc_address = to_expired_email_addresses
                 expiry_date = row[course_type].strftime('%d/%m/%Y')
@@ -255,8 +263,35 @@ def expired_documents_main(coach_documents_path, course_type_to_check, to_expire
                 )
                 send_email(email, cc_address, subject, body)
 
+def download_excel_file(drive, file_id, output_file):
+    file = drive.CreateFile({'id': file_id})
+    file.GetContentFile(output_file, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+def authenticate_drive():
+    gauth = GoogleAuth()
+    
+    # Make sure this path is correct
+    settings_file = 'config/client_secrets.json'
+    
+    # Load client configuration from file
+    try:
+        gauth.LoadClientConfigFile(settings_file)
+    except Exception as e:
+        raise ValueError(f'Failed to load client config file: {e}')
+
+    # Load saved credentials
+    gauth.LoadCredentialsFile('config/my_credentials.json')
+
+    if gauth.credentials is None or gauth.credentials.access_token_expired:
+        gauth.LocalWebserverAuth()  
+        gauth.SaveCredentialsFile('my_credentials.json')
+    
+    return GoogleDrive(gauth)
+
 # Set up the configuration
-coach_documents_path = "C:/Users/Otto/OneDrive/Tennis/Automation/files/coach-doc-overview/Coach Documents Overview Sheet.xlsx"
+service_account_file = 'C:/users/Otto/OneDrive/Tennis/Automation/security/able-reef-427712-s2-5c7e22b7b3b5.json'
+excel_file_id = "1TovOV8p-yiKFLlYMz8hW26qtLifGopc-"
+output_coaching_file = 'files/Coach Documents Overview Sheet.xlsx'
 course_type_to_check = ["lta accreditation", "dbs expiry date", "pediatric fa", "first aid", "safeguarding"]
 to_expiring_email_addresses = ["headcoach@wiltontennisclub.co.uk"]
 to_expired_email_addresses = ["headcoach@wiltontennisclub.co.uk", "info@wiltontennisclub.co.uk", "coachingadmin@wiltontennisclub.co.uk"]
@@ -264,14 +299,18 @@ main_check_sheet_names = ["Program","Assistant"]
 tennis_leader_sheet_name = ["Tennis Leaders"]
 
 if __name__ == "__main__":
+
+    drive = authenticate_drive()
+    download_excel_file(drive, excel_file_id, output_coaching_file)
+
     ## Process the tennis leader reminders
-    tennis_leaders_check_main(tennis_leader_sheet_name, coach_documents_path, to_expiring_email_addresses)  
+    tennis_leaders_check_main(tennis_leader_sheet_name, output_coaching_file , to_expiring_email_addresses)  
 
     ## Process the coach documents expiring reminders
-    expiring_documents_main(coach_documents_path, course_type_to_check, to_expiring_email_addresses)
+    expiring_documents_main(output_coaching_file, course_type_to_check, to_expiring_email_addresses)
 
     ## Process the coach documents expired reminders
-    expired_documents_main(coach_documents_path, course_type_to_check, to_expired_email_addresses)
+    expired_documents_main(output_coaching_file, course_type_to_check, to_expired_email_addresses)
 
 
 
