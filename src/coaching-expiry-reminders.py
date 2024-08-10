@@ -68,6 +68,7 @@ def send_email(to, cc, subject, body):
         print(f"Email sent to {to}")
     except Exception as e:
         print(f"Failed to send email to {to}: {e}")
+        exit()
 
 
 def accreditation_status(accreditation_date):
@@ -177,9 +178,10 @@ def tennis_leaders_check_main(tennis_leader_sheet_name, coach_documents_path, to
         # Send emails to the filtered coaches
         for index, coach in tennis_leaders_to_notify.iterrows():
             name = coach['name']
-            email = "ottosterner1@icloud.com"
-            # email = coach['parent email']
-            # cc_address = to_expiring_email_addresses
+            #email = "ottosterner1@icloud.com"
+            #cc_address = ["ottosterner1@gmail.com"]
+            email = coach['parent email']
+            cc_address = to_expiring_email_addresses
             subject = "DBS Registration Reminder"
             body = (
                 f"Dear Parent of {name},\n\n"
@@ -211,9 +213,10 @@ def expiring_documents_main(coach_documents_path, course_type_to_check, to_expir
 
             for index, row in expiring_course_dataframe.iterrows():
                 name = row['name']
-                email = "ottosterner1@icloud.com"
-                #email = row['email address']
-                #cc_address = to_expiring_email_addresses
+                #email = "ottosterner1@icloud.com"
+                #cc_address = ["ottosterner1@gmail.com"]
+                email = row['email address']
+                cc_address = to_expiring_email_addresses
                 expiry_date = row[course_type].strftime('%d/%m/%Y')
                 subject = f"REMINDER: {course_type.replace('_', ' ').title()} Expiring Soon"
                 body = (
@@ -247,9 +250,10 @@ def expired_documents_main(coach_documents_path, course_type_to_check, to_expire
 
             for index, row in expired_course_dataframe.iterrows():
                 name = row['name']
-                email = "ottosterner1@icloud.com"
-                # email = row['email address']
-                # cc_address = to_expired_email_addresses
+                #email = "ottosterner1@icloud.com"
+                #cc_address = ["ottosterner1@gmail.com"]
+                email = row['email address']
+                cc_address = to_expired_email_addresses
                 expiry_date = row[course_type].strftime('%d/%m/%Y')
                 subject = f"NOTICE: {course_type.replace('_', ' ').title()} Expired"
                 body = (
@@ -284,7 +288,7 @@ def authenticate_drive():
 
     if gauth.credentials is None or gauth.credentials.access_token_expired:
         gauth.LocalWebserverAuth()  
-        gauth.SaveCredentialsFile('my_credentials.json')
+        gauth.SaveCredentialsFile('config/my_credentials.json')
     
     return GoogleDrive(gauth)
 
