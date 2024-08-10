@@ -161,7 +161,7 @@ def read_clean_excel_sheet(file_path, sheet_name):
 
     return coach_documents
 
-def tennis_leaders_check_main(tennis_leader_sheet_name, coach_documents_path, to_expiring_email_addresses):
+def tennis_leaders_check_main(tennis_leader_sheet_name, coach_documents_path, to_expiring_email_addresses, mode):
     """
     Process the tennis leader sheets and notify coaches who have turned 16 within the last month.
 
@@ -178,9 +178,11 @@ def tennis_leaders_check_main(tennis_leader_sheet_name, coach_documents_path, to
         # Send emails to the filtered coaches
         for index, coach in tennis_leaders_to_notify.iterrows():
             name = coach['name']
-            #email = "ottosterner1@icloud.com"
-            #cc_address = ["ottosterner1@gmail.com"]
-            email = coach['parent email']
+            if mode == "self":
+                email = "ottosterner1@icloud.com"
+            else:
+                email = coach['parent email']
+
             cc_address = to_expiring_email_addresses
             subject = "DBS Registration Reminder"
             body = (
@@ -195,7 +197,7 @@ def tennis_leaders_check_main(tennis_leader_sheet_name, coach_documents_path, to
             )
             send_email(email, cc_address, subject, body)
 
-def expiring_documents_main(coach_documents_path, course_type_to_check, to_expiring_email_addresses):
+def expiring_documents_main(coach_documents_path, course_type_to_check, to_expiring_email_addresses, mode):
     """
     Process the coach documents overview sheet and notify coaches with expiring documents.
 
@@ -213,9 +215,10 @@ def expiring_documents_main(coach_documents_path, course_type_to_check, to_expir
 
             for index, row in expiring_course_dataframe.iterrows():
                 name = row['name']
-                #email = "ottosterner1@icloud.com"
-                #cc_address = ["ottosterner1@gmail.com"]
-                email = row['email address']
+                if mode == "self":
+                    email = "ottosterner1@icloud.com"
+                else:
+                    email = row['email address']
                 cc_address = to_expiring_email_addresses
                 expiry_date = row[course_type].strftime('%d/%m/%Y')
                 subject = f"REMINDER: {course_type.replace('_', ' ').title()} Expiring Soon"
@@ -231,7 +234,7 @@ def expiring_documents_main(coach_documents_path, course_type_to_check, to_expir
                 )
                 send_email(email, cc_address, subject, body)
 
-def expired_documents_main(coach_documents_path, course_type_to_check, to_expired_email_addresses):
+def expired_documents_main(coach_documents_path, course_type_to_check, to_expired_email_addresses, mode):
     """
     Process the coach documents overview sheet and notify coaches with expired documents.
 
@@ -250,9 +253,12 @@ def expired_documents_main(coach_documents_path, course_type_to_check, to_expire
 
             for index, row in expired_course_dataframe.iterrows():
                 name = row['name']
-                #email = "ottosterner1@icloud.com"
-                #cc_address = ["ottosterner1@gmail.com"]
-                email = row['email address']
+
+                if mode == "self":
+                    email = "ottosterner1@icloud.com"
+                else:
+                    email = row['email address']
+
                 cc_address = to_expired_email_addresses
                 expiry_date = row[course_type].strftime('%d/%m/%Y')
                 subject = f"NOTICE: {course_type.replace('_', ' ').title()} Expired"
@@ -323,14 +329,29 @@ if __name__ == "__main__":
     drive = authenticate_drive()
     download_excel_file(drive, excel_file_id, output_coaching_file)
 
-    ## Process the tennis leader reminders
-    tennis_leaders_check_main(tennis_leader_sheet_name, output_coaching_file , to_expiring_email_addresses)  
+    # Prompt the user for the mode
+    mode = input("Would you like to run the reminders live or for yourself? (live/self): ").strip().lower()
 
-    ## Process the coach documents expiring reminders
-    expiring_documents_main(output_coaching_file, course_type_to_check, to_expiring_email_addresses)
+    if mode == "live":
+        ## Process the tennis leader reminders
+        tennis_leaders_check_main(tennis_leader_sheet_name, output_coaching_file , to_expiring_email_addresses, mode)  
 
-    ## Process the coach documents expired reminders
-    expired_documents_main(output_coaching_file, course_type_to_check, to_expired_email_addresses)
+        ## Process the coach documents expiring reminders
+        expiring_documents_main(output_coaching_file, course_type_to_check, to_expiring_email_addresses, mode)
+
+        ## Process the coach documents expired reminders
+        expired_documents_main(output_coaching_file, course_type_to_check, to_expired_email_addresses, mode)
+    elif mode == "self":
+        ## Process the tennis leader reminders
+        tennis_leaders_check_main(tennis_leader_sheet_name, output_coaching_file , ["ottosterner1@gmail.com"], mode)  
+
+        ## Process the coach documents expiring reminders
+        expiring_documents_main(output_coaching_file, course_type_to_check, ["ottosterner1@gmail.com"], mode)
+
+        ## Process the coach documents expired reminders
+        expired_documents_main(output_coaching_file, course_type_to_check, ["ottosterner1@gmail.com"], mode)
+    else:
+        print("Invalid mode selected. Please choose 'live' or 'self'.")
 
 
 
