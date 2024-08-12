@@ -221,13 +221,25 @@ def expiring_documents_main(coach_documents_path, course_type_to_check, to_expir
                     email = row['email address']
                 cc_address = to_expiring_email_addresses
                 expiry_date = row[course_type].strftime('%d/%m/%Y')
-                subject = f"REMINDER: {course_type.replace('_', ' ').title()} Expiring Soon"
+
+                if 'lta' in course_type.lower():
+                    course_name = 'LTA Accreditation'
+                elif 'dbs' in course_type.lower():
+                    course_name = 'DBS'
+                elif 'pediatric' in course_type.lower():
+                    course_name = 'Pediatric First Aid'
+                elif 'first' in course_type.lower():
+                    course_name = 'First Aid'
+                elif 'safeguarding' in course_type.lower():
+                    course_name = 'Safeguarding'
+
+                subject = f"REMINDER: {course_name} Expiring Soon"
                 body = (
                     f"Dear {name},\n\n"
-                    f"Your {course_type.replace('_', ' ').title().lower()} is expiring on {expiry_date}. "
-                    f"You've got until this date to get a new one, we suggest you book on this course ASAP as your certificate "
-                    f"needs to be renewed by this date to coach at Wilton Tennis Club.\n\n"
-                    f"Once you've done this, please send a copy of your certificate to headcoach@wiltontennisclub.co.uk "
+                    f"Your {course_name} is expiring on {expiry_date}. "
+                    f"You've got until this date to get a new one, we suggest you renew or book on this course ASAP as your certificate/accreditation "
+                    f"needs to be valid by this date to coach at Wilton Tennis Club.\n\n"
+                    f"Once you've done this, please send a completed copy to headcoach@wiltontennisclub.co.uk "
                     f"and CC in coachingadmin@wiltontennisclub.co.uk.\n\n"
                     f"Kind regards,\n"
                     f"Marc Beckles, Head Coach"
@@ -261,12 +273,24 @@ def expired_documents_main(coach_documents_path, course_type_to_check, to_expire
 
                 cc_address = to_expired_email_addresses
                 expiry_date = row[course_type].strftime('%d/%m/%Y')
-                subject = f"NOTICE: {course_type.replace('_', ' ').title()} Expired"
+
+                if 'lta' in course_type.lower():
+                    course_name = 'LTA Accreditation'
+                elif 'dbs' in course_type.lower():
+                    course_name = 'DBS'
+                elif 'pediatric' in course_type.lower():
+                    course_name = 'Pediatric First Aid'
+                elif 'first' in course_type.lower():
+                    course_name = 'First Aid'
+                elif 'safeguarding' in course_type.lower():
+                    course_name = 'Safeguarding'
+
+                subject = f"NOTICE: {course_name} Expired"
                 body = (
                     f"Dear {name},\n\n"
-                    f"Your {course_type.replace('_', ' ').title().lower()} expired on {expiry_date}. "
-                    f"You can no longer coach at Wilton Tennis Club until you renew your certificate.\n\n"
-                    f"Please renew your certificate and send a copy to headcoach@wiltontennisclub.co.uk "
+                    f"Your {course_name} expired on {expiry_date}. "
+                    f"You can no longer coach at Wilton Tennis Club until it gets renewed.\n\n"
+                    f"Please renew your certificate/accreditation and send a copy to headcoach@wiltontennisclub.co.uk "
                     f"and CC in coachingadmin@wiltontennisclub.co.uk.\n\n"
                     f"Kind regards,\n"
                     f"Marc Beckles, Head Coach"
