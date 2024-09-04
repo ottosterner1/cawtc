@@ -91,7 +91,7 @@ def get_contact_details_from_registers(
         for day in DAYS_OF_WEEK:
 
             # Open the register sheet
-            registers = f"{registers_path}\\{day} {season_of_year} {year}.xlsx"
+            registers = f"{registers_path}/{day} {season_of_year} {year}.xlsx"
             print(f"Opening file at: {registers}")
             wb = openpyxl.load_workbook(registers, read_only=True)
 

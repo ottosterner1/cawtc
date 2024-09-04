@@ -17,7 +17,6 @@ No arguments are required to run this script. To run the script, use the followi
 
 ## Import the required libraries
 import pandas as pd
-import gspread
 from pydrive.auth import GoogleAuth
 from pydrive.drive import GoogleDrive
 import os
