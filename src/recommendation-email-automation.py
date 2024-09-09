@@ -1,27 +1,21 @@
+import tkinter as tk
+from tkinter import filedialog, messagebox
+import pandas as pd
+import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-import smtplib
-import pandas as pd
 
 # Function definitions
 def send_email(to, cc, subject, body):
-    """
-    This function sends an email to the specified recipient with the specified subject and body
-    
-    Arguments:
-    to: str: The email address of the recipient
-    cc: list: A list of email addresses to CC
-    subject: str: The subject of the email
-    body: str: The body of the email
-
-    Returns:
-    None
-    """
     from_email = "headcoach@wiltontennisclub.co.uk"
     
     # Read the password from a file
-    with open('config/email_password.txt', 'r') as file:
-        password = file.read().strip()
+    try:
+        with open('config/email_password.txt', 'r') as file:
+            password = file.read().strip()
+    except FileNotFoundError:
+        messagebox.showerror("Error", "Password file not found!")
+        return
 
     msg = MIMEMultipart()
     msg['From'] = from_email
@@ -41,79 +35,110 @@ def send_email(to, cc, subject, body):
         print(f"Email sent to {to}")
     except Exception as e:
         print(f"Failed to send email to {to}: {e}")
-        exit()
+        messagebox.showerror("Error", f"Failed to send email to {to}: {e}")
 
 def get_contacts(file_path, data_columns):
-    """
-    This function reads the contacts from the specified file and returns a dataframe
-    
-    Arguments:
-    file_path: str: The path to the contacts file
-    data_columns: list: A list of column names to read from the file
-
-    Returns:
-    contacts_df: DataFrame: A pandas DataFrame containing the contacts
-    """
     try:
         contacts_df = pd.read_csv(file_path, usecols=data_columns)
     except Exception as e:
         print(f"Failed to read contacts from {file_path}: {e}")
-        exit()
-
+        messagebox.showerror("Error", f"Failed to read contacts from {file_path}: {e}")
+        return None
     return contacts_df
 
 def loop_through_each_contact_send_email(contacts_df, mode):
-    """
-    This function loops through each contact in the contacts dataframe and sends an email
-    
-    Arguments:
-    contacts_df: DataFrame: A pandas DataFrame containing the contacts
-    mode: str: The mode of operation ('live' or 'self')
-
-    Returns:
-    None
-    """
-
+    if contacts_df is None:
+        return
     
     for index, row in contacts_df.iterrows():
         full_name = row['full name']
         recommendation = row['recommendation']
 
-
-        if mode == "self":
-            email = "ottosterner1@gmail.com"
-            cc_address = [""]
-        else:
+        # Check mode to determine email destination
+        if mode == "live":
             email = row['email']
             cc_address = ["headcoach@wiltontennisclub.co.uk"]
-
-        subject = f"TEST!: NEW RECOMMENDATION!"
+        else:  # Test mode
+            email = "ottosterner1@gmail.com"
+            cc_address = [""]
+        
+        subject = f"NEW RECOMMENDATION!"
         body = (
-            f"Dear Parent or Guardion,\n\n"
+            f"Dear Parent or Guardian,\n\n"
             f"Your child {full_name} has a new recommendation for {recommendation}.\n\n"
-
             f"Kind regards,\n"
             f"Marc Beckles, Head Coach"
         )
 
         send_email(email, cc_address, subject, body)
 
+def run_email_sending():
+    global csv_file_path
+    
+    if csv_file_path == "":
+        messagebox.showerror("Error", "Please select a CSV file first!")
+        return
+
+    # Confirm if mode is live
+    if mode_var.get() == "live":
+        confirm = messagebox.askyesno("Confirmation", "Are you sure you want to send emails in live mode?")
+        if not confirm:
+            return  # If the user cancels, stop the process
+
+    contacts_df = get_contacts(csv_file_path, ["full name", "email", "recommendation"])
+    
+    if contacts_df is not None:
+        loop_through_each_contact_send_email(contacts_df, mode_var.get())
+        messagebox.showinfo("Success", "Emails have been sent successfully!")
+
+def browse_file():
+    global csv_file_path
+    file_path = filedialog.askopenfilename(
+        title="Select Contacts CSV",
+        filetypes=(("CSV Files", "*.csv"),)
+    )
+    
+    if file_path:
+        csv_file_path = file_path
+        lbl_file_path.config(text=f"Selected file: {file_path}")
+
+# GUI setup
+def create_gui():
+    global lbl_file_path, mode_var
+    root = tk.Tk()
+    root.title("Email Sender")
+
+    # Set window size
+    root.geometry("500x300")
+
+    # File selection label and button
+    lbl_instruction = tk.Label(root, text="Select CSV file with contacts:")
+    lbl_instruction.pack(pady=10)
+
+    btn_browse = tk.Button(root, text="Browse", command=browse_file)
+    btn_browse.pack()
+
+    lbl_file_path = tk.Label(root, text="No file selected")
+    lbl_file_path.pack(pady=5)
+
+    # Radio buttons for mode selection
+    mode_var = tk.StringVar(value="live")  # Default to 'live'
+    lbl_mode = tk.Label(root, text="Choose mode:")
+    lbl_mode.pack(pady=10)
+
+    radio_live = tk.Radiobutton(root, text="Live Mode", variable=mode_var, value="live")
+    radio_live.pack()
+
+    radio_test = tk.Radiobutton(root, text="Test Mode", variable=mode_var, value="self")
+    radio_test.pack()
+
+    # Run button for email sending
+    btn_run = tk.Button(root, text="Run Email Sending", command=run_email_sending, bg="green", fg="white")
+    btn_run.pack(pady=20)
+
+    root.mainloop()
 
 # Main code
 if __name__ == "__main__":
-    CONTACTS_FILE_PATH = "data/contacts.csv"
-    DATA_COLUMNS = ["full name", "email", "recommendation"]
-
-    # Prompt the user for the mode
-    mode = input("Would you like to run the reminders live or for yourself? (live/self): ").strip().lower()
-
-    contacts_df = get_contacts(CONTACTS_FILE_PATH, DATA_COLUMNS)
-
-    if mode == "live":
-        print("Starting live run...")
-        loop_through_each_contact_send_email(contacts_df, mode)
-    elif mode == "self":
-        print("Starting run for myself...")
-        loop_through_each_contact_send_email(contacts_df, mode)
-    else:
-        print("Invalid mode selected. Please choose 'live' or 'self'.")
+    csv_file_path = ""
+    create_gui()
