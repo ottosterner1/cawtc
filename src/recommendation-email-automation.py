@@ -4,18 +4,33 @@ import pandas as pd
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+import os
+import sys
+
+def get_resource_path(relative_path):
+    """ Get the absolute path to a resource file. Handles PyInstaller paths. """
+    try:
+        # PyInstaller creates a temp folder and stores the path in _MEIPASS
+        base_path = sys._MEIPASS
+    except AttributeError:
+        # Fallback to the current directory if not running as a PyInstaller executable
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
 
 # Function definitions
 def send_email(to, cc, subject, body):
     from_email = "headcoach@wiltontennisclub.co.uk"
     
+    password_file = get_resource_path('config/email_password.txt')
+
     # Read the password from a file
     try:
-        with open('config/email_password.txt', 'r') as file:
+        with open(password_file, 'r') as file:
             password = file.read().strip()
     except FileNotFoundError:
         messagebox.showerror("Error", "Password file not found!")
-        return
+        exit()
 
     msg = MIMEMultipart()
     msg['From'] = from_email
@@ -36,6 +51,7 @@ def send_email(to, cc, subject, body):
     except Exception as e:
         print(f"Failed to send email to {to}: {e}")
         messagebox.showerror("Error", f"Failed to send email to {to}: {e}")
+        exit()
 
 def get_contacts(file_path, data_columns):
     try:
@@ -62,10 +78,12 @@ def loop_through_each_contact_send_email(contacts_df, mode):
             email = "ottosterner1@gmail.com"
             cc_address = [""]
         
-        subject = f"NEW RECOMMENDATION!"
+        subject = f"{full_name} Group Recommendation for Next Term"
         body = (
             f"Dear Parent or Guardian,\n\n"
-            f"Your child {full_name} has a new recommendation for {recommendation}.\n\n"
+            f"Thank you for signing up your child for this term of coaching at Wilton Tennis Club.\n\n"
+            f"{full_name} is recommended to sign up to the following group class for next term: {recommendation}.\n\n"
+            f"Please let me know if you have any queries regarding this recommendation.\n\n"
             f"Kind regards,\n"
             f"Marc Beckles, Head Coach"
         )
