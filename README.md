@@ -8,6 +8,6 @@ source .venv/bin/activate
 ## Install dependencies
 pip install -r requirements.txt
 
-## Create a application using pyinstaller
+## Create a application using pyinstaller - emailing recommendation
 pyinstaller --onefile --windowed --add-data "config/email_password.txt:config" recommendation-email-automation.py
 
