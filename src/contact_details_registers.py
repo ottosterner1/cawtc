@@ -12,7 +12,7 @@ VALID_SESSION_TYPES = [
     "bronze", "bronze plus", "silver", "gold", "platinum", "perf", "perf 2"
 ]
 VALID_SEASONS = ["spring", "summer", "autumn", "winter"]
-COLUMN_NAMES = ["Day of Week", "full name", "email"]
+COLUMN_NAMES = ["Day of Week", "Sheet Name", "full name", "email"]  # Added Sheet Name
 COACHING_CONTACT_COLUMNS = ["full name","dob","email"]
 
 def read_contacts_table(file_path, sheet_name):    
@@ -21,6 +21,7 @@ def read_contacts_table(file_path, sheet_name):
 
     Args:
      - file_path: string
+     - sheet_name: string
 
     Returns:
      - contacts_dataframe: df containing list of contacts
@@ -33,25 +34,13 @@ def read_contacts_table(file_path, sheet_name):
         # Make the columns lower case and strip the white space
         contacts_dataframe.columns = contacts_dataframe.columns.str.lower().str.strip()
 
-        # Rename columns that contain 'full name' to 'full name'
-        #contacts_dataframe.columns = ['full name' if isinstance(col, str) and 'full name' in col else col for col in contacts_dataframe.columns]
-        #contacts_dataframe.columns = ['email' if isinstance(col, str) and 'email' in col else col for col in contacts_dataframe.columns]
-
         for target_col in COACHING_CONTACT_COLUMNS:
             contacts_dataframe.columns = [
                 target_col if isinstance(col, str) and target_col in col else col 
                 for col in contacts_dataframe.columns
-        ]
+            ]
 
         contacts_dataframe = contacts_dataframe[COACHING_CONTACT_COLUMNS]
-        
-        #contacts_dataframe = contacts_dataframe[
-        #    [
-        #        col
-        #        for col in contacts_dataframe.columns
-        #        if "full name" in str(col) or "email" in str(col)
-        #    ]
-        #]
 
         # Find the index of the first row where "Full name" is NaN and drop all
         # rows after that
@@ -89,7 +78,6 @@ def get_contact_details_from_registers(
 
         # Cycle through each of the days of the week / sheets
         for day in DAYS_OF_WEEK:
-
             # Open the register sheet
             registers = f"{registers_path}/{day} {season_of_year} {year}.xlsx"
             print(f"Opening file at: {registers}")
@@ -102,8 +90,9 @@ def get_contact_details_from_registers(
             for sheet_name in sheet_names:
                 # Call the read contacts table function
                 contacts = read_contacts_table(registers, sheet_name)
-                # Add the day of the week to the contacts data frame
+                # Add the day of the week and sheet name to the contacts data frame
                 contacts["Day of Week"] = day
+                contacts["Sheet Name"] = sheet_name  # Add sheet name to the DataFrame
                 # Remove duplicate columns in contacts_data_frame
                 contacts_data_frame = contacts_data_frame.loc[
                     :, ~contacts_data_frame.columns.duplicated()

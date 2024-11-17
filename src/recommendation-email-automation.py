@@ -58,6 +58,9 @@ def get_contacts(file_path, data_columns):
 def loop_through_each_contact_send_email(contacts_df, recipient_type):
     if contacts_df is None:
         return
+
+    booking_date = entry_date.get()
+    booking_time = entry_time.get()
     
     for index, row in contacts_df.iterrows():
         full_name = row['full name']
@@ -65,12 +68,14 @@ def loop_through_each_contact_send_email(contacts_df, recipient_type):
         email = row['email']
         cc_address = [""]
         subject = f"{full_name} Group Recommendation for Next Term"
-        
+
         if recipient_type == "parents":
             body = (
                 f"Dear Parent or Guardian,\n\n"
                 f"Thank you for signing up your child for this term of coaching at Wilton Tennis Club.\n\n"
-                f"{full_name} is recommended to sign up to the following group class for next term: {recommendation}.\n\n"
+                f"{full_name} is recommended to sign up to the following group class for next term:\n\n{recommendation}\n\n"
+                f"Bookings for next term open on {booking_date} at {booking_time}.\n\n"
+                f"Here is the link to the Wilton coaching booking page: https://booking.wiltontennisclub.co.uk/. \n\n"
                 f"Please let me know if you have any queries regarding this recommendation.\n\n"
                 f"Kind regards,\n"
                 f"Marc Beckles, Head Coach"
@@ -79,7 +84,9 @@ def loop_through_each_contact_send_email(contacts_df, recipient_type):
             body = (
                 f"Dear {full_name},\n\n"
                 f"Thank you for joining the coaching sessions this term at Wilton Tennis Club.\n\n"
-                f"You are recommended to sign up for the following group class next term: {recommendation}.\n\n"
+                f"You are recommended to sign up for the following group class next term:\n\n{recommendation}\n\n"
+                f"Bookings for next term open on {booking_date} at {booking_time}.\n\n"
+                f"Here is the link to the Wilton coaching booking page: https://booking.wiltontennisclub.co.uk/. \n\n"
                 f"Please let me know if you have any queries regarding this recommendation.\n\n"
                 f"Kind regards,\n"
                 f"Marc Beckles, Head Coach"
@@ -92,8 +99,20 @@ def run_email_sending_in_background():
     if csv_file_path == "":
         messagebox.showerror("Error", "Please select a CSV file first!")
         return
+
+    # Check if the user has entered date and time
+    if not entry_date.get() or not entry_time.get():
+        messagebox.showerror("Error", "Please enter the date and time for the bookings.")
+        return
+
+    # Ask for confirmation before sending emails
+    recipient_type = recipient_type_var.get()
+    if not messagebox.askyesno("Confirmation", f"Are you sure you want to send emails to all {recipient_type} in the file? Remember to double check the date, time and type of email before sending"):
+        btn_run.config(state=tk.NORMAL, text="Send Emails")
+        return
+
     contacts_df = get_contacts(csv_file_path, ["full name", "email", "recommendation"])
-    
+
     if contacts_df is not None:
         loop_through_each_contact_send_email(contacts_df, recipient_type_var.get())
 
@@ -115,11 +134,11 @@ def browse_file():
         lbl_file_path.config(text=f"Selected file: {file_path}")
 
 def create_gui():
-    global lbl_file_path, recipient_type_var, btn_run, root, mode_var
+    global lbl_file_path, recipient_type_var, btn_run, root, mode_var, entry_date, entry_time
 
-    root = tk.Tk()  # Tk() root window must be created before any Tkinter variables
+    root = tk.Tk()
     root.title("Email Sender")
-    root.geometry("500x400")
+    root.geometry("500x500")
 
     lbl_instruction = tk.Label(root, text="Select CSV file with contacts\n\nFile needs the following columns: full name, email, recommendation")
     lbl_instruction.pack(pady=10)
@@ -140,7 +159,18 @@ def create_gui():
     radio_adults = tk.Radiobutton(root, text="Adults", variable=recipient_type_var, value="adults")
     radio_adults.pack()
 
-    btn_run = tk.Button(root, text="Send Emails", command=run_email_sending, bg="green", fg="white")
+    # Add text boxes for date and time
+    lbl_date = tk.Label(root, text="Enter booking opening date (e.g., 01-Jan-2024):")
+    lbl_date.pack(pady=10)
+    entry_date = tk.Entry(root)
+    entry_date.pack()
+
+    lbl_time = tk.Label(root, text="Enter booking opening time (e.g., 09:00 AM):")
+    lbl_time.pack(pady=10)
+    entry_time = tk.Entry(root)
+    entry_time.pack()
+
+    btn_run = tk.Button(root, text="Send Emails", command=run_email_sending, bg="green", fg="black")
     btn_run.pack(pady=20)
 
     mode_var = tk.StringVar(value="live")  # Initialize and force live mode after Tk root window
@@ -154,5 +184,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 

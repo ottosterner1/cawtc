@@ -16,16 +16,18 @@ No arguments are required to run this script. To run the script, use the followi
 """
 
 ## Import the required libraries
-import pandas as pd
-from pydrive.auth import GoogleAuth
-from pydrive.drive import GoogleDrive
 import os
+import smtplib
 import sys
 from datetime import datetime, timedelta
-from dateutil.relativedelta import relativedelta
-import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+
+import pandas as pd
+from dateutil.relativedelta import relativedelta
+from pydrive.auth import GoogleAuth
+from pydrive.drive import GoogleDrive
+
 
 ############################################
 # Function Definitions
@@ -340,7 +342,7 @@ def authenticate_drive():
 # Set up the configuration
 service_account_file = 'C:/users/Otto/OneDrive/Tennis/Automation/security/able-reef-427712-s2-5c7e22b7b3b5.json'
 excel_file_id = "1TovOV8p-yiKFLlYMz8hW26qtLifGopc-"
-output_coaching_file = 'files/Coach Documents Overview Sheet.xlsx'
+output_coaching_file = 'data/Coach Documents Overview Sheet.xlsx'
 course_type_to_check = ["lta accreditation", "dbs expiry date", "pediatric fa", "first aid", "safeguarding"]
 to_expiring_email_addresses = ["headcoach@wiltontennisclub.co.uk"]
 to_expired_email_addresses = ["headcoach@wiltontennisclub.co.uk", "info@wiltontennisclub.co.uk", "coachingadmin@wiltontennisclub.co.uk"]
