@@ -25,12 +25,12 @@ jobs:
     
     - name: Build executable
       run: |
-        pyinstaller --onefile --windowed \
-          --name ContactDetailsScript \
-          --hidden-import=tkinter \
-          --hidden-import=openpyxl \
-          --hidden-import=pandas \
-          rc/contact_details_registers.py
+        pyinstaller --onefile --windowed `
+          --name ContactDetailsScript `
+          --hidden-import=tkinter `
+          --hidden-import=openpyxl `
+          --hidden-import=pandas `
+          src/contact_details_registers.py
     
     - name: Upload artifact
       uses: actions/upload-artifact@v3
