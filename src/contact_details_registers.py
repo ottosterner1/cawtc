@@ -12,8 +12,56 @@ VALID_SESSION_TYPES = [
     "bronze", "bronze plus", "silver", "gold", "platinum", "perf", "perf 2"
 ]
 VALID_SEASONS = ["spring", "summer", "autumn", "winter"]
-COLUMN_NAMES = ["Day of Week", "Sheet Name", "full name", "email"]  # Added Sheet Name
-COACHING_CONTACT_COLUMNS = ["full name","dob","email"]
+COLUMN_NAMES = ["Day of Week", "Sheet Name", "full name", "email", "Predicted Recommendation Group"]  # Added Recommended Group
+COACHING_CONTACT_COLUMNS = ["full name", "dob", "email"]
+
+def calculate_age(dob):
+    """
+    Calculate age from date of birth
+    
+    Args:
+        dob: datetime object representing date of birth
+        
+    Returns:
+        int: age in years
+    """
+    today = datetime.datetime.now()
+    try:
+        # Handle both datetime and string inputs
+        if isinstance(dob, str):
+            dob = pd.to_datetime(dob)
+        return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+    except:
+        return None
+
+def get_recommended_group(age):
+    """
+    Determine recommended group based on age
+    
+    Args:
+        age: int representing person's age
+        
+    Returns:
+        str: recommended group name
+    """
+    if age is None:
+        return "Unknown (Invalid DOB)"
+    elif age < 3:
+        return "Too young"
+    elif 3 <= age <= 4:
+        return "tots"
+    elif 5 <= age <= 8:
+        return "red"
+    elif age == 9:
+        return "orange"
+    elif age == 10:
+        return "green"
+    elif 11 <= age <= 17:
+        return "yellow"
+    elif age >= 18:
+        return "adults"
+    else:
+        return "Unknown"
 
 def read_contacts_table(file_path, sheet_name):    
     """
@@ -49,6 +97,13 @@ def read_contacts_table(file_path, sheet_name):
         ].index
         if not first_empty_index.empty:
             contacts_dataframe = contacts_dataframe.iloc[: first_empty_index[0]]
+
+        # Calculate ages and recommended groups
+        contacts_dataframe['age'] = contacts_dataframe['dob'].apply(calculate_age)
+        contacts_dataframe['Predicted Recommendation Group'] = contacts_dataframe['age'].apply(get_recommended_group)
+        
+        # Drop the temporary age column
+        contacts_dataframe = contacts_dataframe.drop('age', axis=1)
 
     except Exception as e:
         messagebox.showerror("Error", f"Error reading the contacts: {str(e)}")
@@ -92,7 +147,7 @@ def get_contact_details_from_registers(
                 contacts = read_contacts_table(registers, sheet_name)
                 # Add the day of the week and sheet name to the contacts data frame
                 contacts["Day of Week"] = day
-                contacts["Sheet Name"] = sheet_name  # Add sheet name to the DataFrame
+                contacts["Sheet Name"] = sheet_name
                 # Remove duplicate columns in contacts_data_frame
                 contacts_data_frame = contacts_data_frame.loc[
                     :, ~contacts_data_frame.columns.duplicated()
