@@ -54,11 +54,22 @@ jobs:
           ]
         )" > version.txt
 
-    - name: Create Password File
+    - name: Create Password File (Windows)
+      if: runner.os == 'Windows'
+      env:
+        EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+      shell: pwsh
+      run: |
+        $password = $env:EMAIL_PASSWORD
+        Set-Content -Path "email_password.txt" -Value $password -NoNewline
+
+    - name: Create Password File (macOS)
+      if: runner.os == 'macOS'
       env:
         EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
       run: |
-        echo "$EMAIL_PASSWORD" > email_password.txt
+        echo -n "$EMAIL_PASSWORD" > email_password.txt
+        cat email_password.txt  # Debug print to verify file content (will be hidden in logs)
 
     - name: Build Contact Details Script (Windows)
       if: runner.os == 'Windows'
