@@ -9,23 +9,13 @@ import sys
 import threading
 import queue
 
-def get_resource_path(relative_path):
-    """ Get the absolute path to a resource file. Handles PyInstaller paths. """
-    try:
-        base_path = sys._MEIPASS
-    except AttributeError:
-        base_path = os.path.abspath(".")
-    return os.path.join(base_path, relative_path)
-
 # Function definitions
 def send_email(to, cc, subject, body):
     from_email = "headcoach@wiltontennisclub.co.uk"
-    password_file = get_resource_path('config/email_password.txt')
-    try:
-        with open(password_file, 'r') as file:
-            password = file.read().strip()
-    except FileNotFoundError:
-        return False, "Password file not found!"
+    # Get password from environment variable
+    password = os.environ.get('EMAIL_PASSWORD')
+    if not password:
+        return False, "Email password not found in environment variables!"
     
     msg = MIMEMultipart()
     msg['From'] = from_email
