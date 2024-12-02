@@ -1,6 +1,9 @@
 name: Build Cross-Platform Executable
 
-on: [push]
+on:
+  push:
+    branches:
+      - main 
 
 jobs:
   build:
@@ -42,8 +45,8 @@ jobs:
               [
                 StringTable(
                   u'040904B0',
-                  [StringStruct(u'FileDescription', u'Contact Details Script'),
-                   StringStruct(u'ProductName', u'Contact Details Script'),
+                  [StringStruct(u'FileDescription', u'Wilton Tennis Automation'),
+                   StringStruct(u'ProductName', u'Tennis Automation Scripts'),
                    StringStruct(u'ProductVersion', u'1.0.0.0')])
               ]
             ),
@@ -51,7 +54,7 @@ jobs:
           ]
         )" > version.txt
 
-    - name: Build executable (Windows)
+    - name: Build Contact Details Script (Windows)
       if: runner.os == 'Windows'
       run: |
         pyinstaller --onefile --windowed `
@@ -62,7 +65,16 @@ jobs:
           --hidden-import=pandas `
           src/contact_details_registers.py
 
-    - name: Build executable (macOS)
+    - name: Build Recommendation Email Script (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        pyinstaller --onefile --windowed `
+          --name RecommendationEmail `
+          --version-file=version.txt `
+          --add-data "config/email_password.txt;config" `
+          src/recommendation-email-automation.py
+
+    - name: Build Contact Details Script (macOS)
       if: runner.os == 'macOS'
       run: |
         pyinstaller --onefile --windowed \
@@ -74,8 +86,24 @@ jobs:
         chmod +x dist/ContactDetailsScript
         xattr -cr dist/ContactDetailsScript
 
-    - name: Upload artifact
+    - name: Build Recommendation Email Script (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        pyinstaller --onefile --windowed \
+          --name RecommendationEmail \
+          --add-data "config/email_password.txt:config" \
+          src/recommendation-email-automation.py
+        chmod +x dist/RecommendationEmail
+        xattr -cr dist/RecommendationEmail
+
+    - name: Upload Contact Details Script
       uses: actions/upload-artifact@v3
       with:
         name: ContactDetailsScript-${{ matrix.os }}-py3.12
         path: dist/ContactDetailsScript*
+
+    - name: Upload Recommendation Email Script
+      uses: actions/upload-artifact@v3
+      with:
+        name: RecommendationEmail-${{ matrix.os }}-py3.12
+        path: dist/RecommendationEmail*
