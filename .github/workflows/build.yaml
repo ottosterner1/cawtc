@@ -54,6 +54,12 @@ jobs:
           ]
         )" > version.txt
 
+    - name: Create Password File
+      env:
+        EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+      run: |
+        echo "$EMAIL_PASSWORD" > email_password.txt
+
     - name: Build Contact Details Script (Windows)
       if: runner.os == 'Windows'
       run: |
@@ -67,12 +73,11 @@ jobs:
 
     - name: Build Recommendation Email Script (Windows)
       if: runner.os == 'Windows'
-      env:
-        EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
       run: |
         pyinstaller --onefile --windowed `
           --name RecommendationEmail `
           --version-file=version.txt `
+          --add-data "email_password.txt;." `
           src/recommendation-email-automation.py
 
     - name: Build Contact Details Script (macOS)
@@ -89,14 +94,17 @@ jobs:
 
     - name: Build Recommendation Email Script (macOS)
       if: runner.os == 'macOS'
-      env:
-        EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
       run: |
         pyinstaller --onefile --windowed \
           --name RecommendationEmail \
+          --add-data "email_password.txt:." \
           src/recommendation-email-automation.py
         chmod +x dist/RecommendationEmail
         xattr -cr dist/RecommendationEmail
+
+    - name: Remove Password File
+      run: |
+        rm email_password.txt
 
     - name: Upload Contact Details Script
       uses: actions/upload-artifact@v3

@@ -12,10 +12,25 @@ import queue
 # Function definitions
 def send_email(to, cc, subject, body):
     from_email = "headcoach@wiltontennisclub.co.uk"
-    # Get password from environment variable
+    
+    # Try multiple methods to get the password
+    password = None
+    
+    # First try environment variable
     password = os.environ.get('EMAIL_PASSWORD')
+    
+    # If not found, try PyInstaller's _MEIPASS for bundled version
     if not password:
-        return False, "Email password not found in environment variables!"
+        try:
+            base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+            password_file = os.path.join(base_path, 'email_password.txt')
+            with open(password_file, 'r') as file:
+                password = file.read().strip()
+        except:
+            pass
+
+    if not password:
+        return False, "Email password not found! Please ensure either EMAIL_PASSWORD environment variable is set or email_password.txt exists."
     
     msg = MIMEMultipart()
     msg['From'] = from_email
