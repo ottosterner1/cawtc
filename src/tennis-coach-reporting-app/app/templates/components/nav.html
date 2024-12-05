@@ -1,0 +1,46 @@
+<nav class="bg-white shadow-lg">
+    <div class="container mx-auto px-4">
+        <div class="flex justify-between items-center py-4">
+            <a href="{{ url_for('main.home') }}" class="text-xl font-bold text-blue-600 hover:text-blue-800">
+                Tennis Coach App
+            </a>
+            
+            {% if current_user.is_authenticated %}
+            <div class="flex items-center gap-4">
+                
+                {% if current_user.is_admin() or current_user.is_super_admin() %}
+                <a href="{{ url_for('club_management.manage_club', club_id=current_user.tennis_club_id) }}" 
+                   class="text-gray-600 hover:text-blue-600">
+                    Manage Club
+                </a>
+                <a href="{{ url_for('club_management.manage_teaching_periods', club_id=current_user.tennis_club_id) }}" 
+                    class="text-gray-600 hover:text-blue-600">
+                    Manage periods
+                </a>
+                {% endif %}
+                
+                {% if current_user.is_super_admin() %}
+                <a href="{{ url_for('club_management.onboard_club') }}" 
+                   class="text-gray-600 hover:text-blue-600">
+                    New Tennis Club
+                </a>
+                {% endif %}
+                
+                <div class="text-gray-600">
+                    Welcome, {{ current_user.name }}
+                    {% if current_user.tennis_club %}
+                    <span class="text-sm text-gray-500 ml-1">
+                        ({{ current_user.tennis_club.name }})
+                    </span>
+                    {% endif %}
+                </div>
+                
+                <a href="{{ url_for('main.logout') }}" 
+                   class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition-colors">
+                    Logout
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</nav>

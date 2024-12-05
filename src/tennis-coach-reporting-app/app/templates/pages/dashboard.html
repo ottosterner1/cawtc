@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tennis Reports Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+    <!-- Navigation -->
+    <div class="max-w-7xl mx-auto px-4">
+        <div class="flex justify-between h-16">
+            <div class="flex items-center space-x-6">
+                <h1 class="text-xl font-bold">Tennis Reports Dashboard</h1>
+                <a href="{{ url_for('main.home') }}" 
+                   class="text-blue-600 hover:text-blue-800 transition-colors flex items-center">
+                    <span class="mr-1">←</span> Back to Home
+                </a>
+            </div>
+
+            <div class="flex items-center space-x-4">
+                <span class="text-gray-600">{{ current_user.name }}</span>
+                <a href="{{ url_for('main.logout') }}" 
+                   class="text-red-600 hover:text-red-800 transition-colors">
+                    Logout
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto py-6 px-4">
+        <!-- Term Selection and Download All -->
+        <div class="mb-8">
+            <div class="flex justify-between items-center">
+                <form id="periodForm" method="GET" action="{{ url_for('main.dashboard') }}" class="flex items-center space-x-2">
+                    <label for="period" class="text-gray-700 font-medium">Select Period:</label>
+                    <select name="period" id="period" 
+                            class="border border-gray-300 rounded px-3 py-2 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            onchange="this.form.submit()">
+                        {% for term in periods %}
+                            <option value="{{ term.id }}" {% if term.id == selected_period_id %}selected{% endif %}>
+                                {{ term.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </form>
+                <a href="{{ url_for('main.download_reports', teaching_period_id=selected_period_id) }}"
+                   class="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 transition-colors">
+                    Download All Reports
+                </a>
+            </div>
+        </div>
+
+        <!-- Groups Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+            {% for group in groups %}
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-bold mb-2">{{ group.name }}</h3>
+                <div class="text-sm text-gray-600 mb-4">
+                    <p>Description: {{ group.description }}</p>
+                    <p>Reports: {{ group_reports[group.id] }}</p>
+                </div>
+                <div class="flex flex-wrap gap-4">
+                    <a href="{{ url_for('main.upload', group_id=group.id) }}" 
+                       class="text-blue-500 hover:text-blue-700 transition-colors">
+                        Add Reports →
+                    </a>
+                    {% if group_reports[group.id] > 0 %}
+                    <a href="{{ url_for('main.view_group_reports', group_id=group.id, teaching_period_id=selected_period_id) }}" 
+                       class="text-green-500 hover:text-green-700 transition-colors">
+                        View Reports →
+                    </a>
+                    <a href="{{ url_for('main.download_reports', teaching_period_id=selected_period_id, group_id=group.id) }}"
+                       class="text-green-500 hover:text-green-700 transition-colors">
+                        Download Group →
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Recent Reports -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-bold mb-4">Recent Reports</h2>
+            {% if recent_reports %}
+            <div class="space-y-4">
+                {% for report in recent_reports %}
+                <div class="border-b pb-4">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h3 class="font-bold">{{ report.student.name }}</h3>
+                            <p class="text-sm text-gray-600">
+                                {{ report.tennis_group.name if report.tennis_group else 'No Group' }} - 
+                                {{ report.teaching_period.name if report.teaching_period else 'No Term' }}
+                            </p>
+                            {% if report.next_group_recommendation %}
+                            <p class="text-sm text-blue-600">
+                                Next Term: {{ report.next_group_recommendation }}
+                            </p>
+                            {% endif %}
+                        </div>
+                        <div class="text-right">
+                            <span class="text-sm text-gray-500">
+                                {{ report.date.strftime('%Y-%m-%d') }}
+                            </span>
+                            <div class="mt-1 flex flex-col space-y-2">
+                                <a href="{{ url_for('main.view_report', report_id=report.id) }}" 
+                                   class="text-sm text-blue-500 hover:text-blue-700">
+                                    View Details
+                                </a>
+                                <a href="{{ url_for('main.download_single_report', report_id=report.id) }}"
+                                   class="text-sm text-green-500 hover:text-green-700">
+                                    Download PDF
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-2 grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
+                        {% if report.forehand == 'YES' %}
+                        <span class="text-green-600">✓ Forehand</span>
+                        {% endif %}
+                        {% if report.backhand == 'YES' %}
+                        <span class="text-green-600">✓ Backhand</span>
+                        {% endif %}
+                        {% if report.movement == 'YES' %}
+                        <span class="text-green-600">✓ Movement</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-gray-500 text-center py-4">No reports available for this term</p>
+            {% endif %}
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="mt-8 flex justify-end space-x-4">
+            <a href="{{ url_for('main.upload') }}" 
+               class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 transition-colors">
+                Upload New Reports
+            </a>
+            <a href="{{ url_for('main.view_group_reports', group_id=groups[0].id, teaching_period_id=selected_period_id) if groups else '#' }}" 
+               class="bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600 transition-colors">
+                View All Reports
+            </a>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="mt-8 py-4">
+        <div class="max-w-7xl mx-auto px-4 text-center text-gray-600 text-sm">
+            Tennis Coach Reporting System
+        </div>
+    </footer>
+</body>
+</html>

@@ -11,3 +11,20 @@ pip install -r requirements.txt
 ## Create a application using pyinstaller - emailing recommendation
 pyinstaller --onefile --windowed --add-data "config/email_password.txt:config" recommendation-email-automation.py
 
+pyinstaller --onefile --windowed \
+    --name ContactDetailsScript \
+    --hidden-import=tkinter \
+    --hidden-import=openpyxl \
+    --hidden-import=pandas \
+    src/contact_details_registers.py
+
+
+
+## Flask coaching app
+source venv/bin/activate
+
+export FLASK_APP=run.py
+export FLASK_ENV=development
+
+flask run --host=localhost --port=3000
+
