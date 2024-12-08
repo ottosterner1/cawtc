@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+    <div class="bg-white shadow-lg rounded-lg p-6">
+        <!-- Period Filter -->
+        <div class="mb-6">
+            <form method="GET" class="flex items-center space-x-2">
+                <label for="period" class="block text-sm font-medium text-gray-700">Teaching Period:</label>
+                <select name="period" 
+                        id="period"
+                        onchange="this.form.submit()"
+                        class="rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    {% for period in periods %}
+                    <option value="{{ period.id }}" {% if period.id == selected_period_id %}selected{% endif %}>
+                        {{ period.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </form>
+        </div>
+
+        <!-- Header -->
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 space-y-4 md:space-y-0">
+            <h1 class="text-2xl font-bold text-gray-900">Manage Programme Players</h1>
+
+            <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4">
+                <a href="{{ url_for('club_management.add_player', club_id=club.id) }}" 
+                   class="inline-flex items-center justify-center px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors duration-200">
+                    <svg class="h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+                    </svg>
+                    Add New Player
+                </a>
+                <button onclick="toggleBulkUpload()" 
+                        class="inline-flex items-center justify-center px-4 py-2 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 transition-colors duration-200">
+                    <svg class="h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" />
+                    </svg>
+                    Bulk Upload
+                </button>
+                <a href="{{ url_for('club_management.download_assignment_template', club_id=club.id) }}"
+                   class="inline-flex items-center justify-center px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors duration-200">
+                    <svg class="h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
+                    </svg>
+                    Download Template
+                </a>
+            </div>
+        </div>
+
+        <!-- Bulk Upload Section (Hidden by default) -->
+        <div id="bulkUploadSection" class="hidden mb-8 p-6 bg-gray-50 rounded-lg border border-gray-200">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Bulk Upload Players</h3>
+            
+            <form method="POST" enctype="multipart/form-data" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Upload CSV File</label>
+                    <input type="file" 
+                           name="file" 
+                           accept=".csv"
+                           required
+                           class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                    <input type="hidden" name="teaching_period_id" value="{{ selected_period_id }}">
+                </div>
+
+                <div class="bg-blue-50 rounded-md p-4">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-blue-800">CSV Format Requirements</h3>
+                            <div class="mt-2 text-sm text-blue-700">
+                                <p>Required columns:</p>
+                                <ul class="list-disc pl-5 mt-1">
+                                    <li>student_name</li>
+                                    <li>date_of_birth (DD-MMM-YYYY format)</li>
+                                    <li>contact_email</li>
+                                    <li>coach_email</li>
+                                    <li>group_name</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-end">
+                    <button type="submit" 
+                            class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors duration-200">
+                        Upload Players
+                    </button>
+                </div>
+            </form>
+        </div>
+
+
+        <!-- Players Table -->
+        <div class="mt-8">
+            <h2 class="text-lg font-semibold mb-4">Current Players</h2>
+            {% if players %}
+            <div class="overflow-x-auto shadow ring-1 ring-black ring-opacity-5 rounded-lg">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Student</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Coach</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Group</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                            <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for player in players %}
+                        <tr>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="font-medium text-gray-900">{{ player.student.name }}</div>
+                                <div class="text-sm text-gray-500">Born: {{ player.student.date_of_birth_formatted }} (Age: {{ player.student.age }})</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">{{ player.student.contact_email }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap">{{ player.coach.name }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap">{{ player.tennis_group.name }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                {% if player.report_submitted %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Completed</span>
+                                {% else %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Pending</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                <a href="{{ url_for('club_management.edit_player', club_id=club.id, player_id=player.id) }}" 
+                                   class="inline-flex items-center px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-md hover:bg-indigo-100 transition-colors duration-200">
+                                    <svg class="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                        <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                                    </svg>
+                                    Edit
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-8 bg-gray-50 rounded-lg">
+                No players found for this teaching period.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+function toggleBulkUpload() {
+    const section = document.getElementById('bulkUploadSection');
+    if (section.classList.contains('hidden')) {
+        section.classList.remove('hidden');
+    } else {
+        section.classList.add('hidden');
+    }
+}
+</script>
+{% endblock %}

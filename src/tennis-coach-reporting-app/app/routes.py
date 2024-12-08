@@ -2,7 +2,7 @@ import traceback
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app
 from flask_login import login_user, login_required, logout_user, current_user
 from werkzeug.security import check_password_hash, generate_password_hash
-from app.models import User, TennisGroup, TeachingPeriod, Student, Report, UserRole, TennisClub, PlayerAssignment
+from app.models import User, TennisGroup, TeachingPeriod, Student, Report, UserRole, TennisClub, ProgrammePlayers
 from app import db
 from app.auth import oauth
 from app.clubs.routes import club_management
@@ -11,6 +11,7 @@ from datetime import datetime
 import csv
 from werkzeug.utils import secure_filename
 from flask import session, url_for
+from sqlalchemy.exc import SQLAlchemyError
 import os
 import random
 import string
@@ -181,64 +182,111 @@ def logout():
 @verify_club_access()
 def dashboard():
     try:
-        selected_period_id = request.args.get('period', type=int)
-        
         # Get periods for this club only
         periods = TeachingPeriod.query.filter_by(
             tennis_club_id=current_user.tennis_club_id
         ).order_by(TeachingPeriod.start_date.desc()).all()
-        
+
+        # Get selected period or default to most recent
+        selected_period_id = request.args.get('period', type=int)
         if not selected_period_id and periods:
             selected_period_id = periods[0].id
-        
-        # Get groups for this club only
-        groups = TennisGroup.query.filter_by(
-            tennis_club_id=current_user.tennis_club_id
-        ).all()
-        
-        # Start with base Report query
-        reports_query = Report.query
-        
-        # Add filters
-        if not current_user.is_admin():
-            reports_query = reports_query.filter(Report.coach_id == current_user.id)
-        
-        # Join with Student and filter by tennis club
-        reports_query = (reports_query
-            .join(Student)
-            .filter(Student.tennis_club_id == current_user.tennis_club_id))
-            
+
+        # Only proceed if we have a selected period
         if selected_period_id:
-            reports_query = reports_query.filter(Report.teaching_period_id == selected_period_id)
-        
-        # Get recent reports
-        recent_reports = (reports_query
-            .order_by(Report.date.desc())
-            .limit(10)
-            .all())
-        
-        # Count reports for each group
-        group_reports = {}
-        for group in groups:
-            count_query = Report.query.filter(
-                Report.coach_id == current_user.id,
-                Report.group_id == group.id
+            # Base query for programme players
+            programme_players_query = ProgrammePlayers.query.filter_by(
+                tennis_club_id=current_user.tennis_club_id,
+                teaching_period_id=selected_period_id
             )
-            if selected_period_id:
-                count_query = count_query.filter(Report.teaching_period_id == selected_period_id)
-            group_reports[group.id] = count_query.count()
-        
+            
+            # If user is not admin/super_admin, filter by coach_id
+            if not (current_user.is_admin() or current_user.is_super_admin()):
+                programme_players_query = programme_players_query.filter_by(coach_id=current_user.id)
+            
+            # Get all relevant programme players
+            programme_players = programme_players_query.all()
+
+            # Get student IDs for all players
+            student_ids = [player.student_id for player in programme_players]
+            
+            # Base query for reports
+            reports_query = Report.query.filter(
+                Report.teaching_period_id == selected_period_id,
+                Report.student_id.in_(student_ids) if student_ids else False
+            )
+            
+            # If user is not admin/super_admin, filter by coach_id
+            if not (current_user.is_admin() or current_user.is_super_admin()):
+                reports_query = reports_query.filter_by(coach_id=current_user.id)
+                
+            reports = reports_query.all()
+
+            # Create a dictionary to map reports to student IDs
+            report_map = {report.student_id: report for report in reports}
+            
+            # Generate group summaries
+            current_groups = {}
+            recommended_groups = {}
+            
+            # Count current group distributions
+            for player in programme_players:
+                group_name = player.tennis_group.name
+                current_groups[group_name] = current_groups.get(group_name, 0) + 1
+                
+                # If there's a report, count recommended groups
+                if player.student_id in report_map:
+                    report = report_map[player.student_id]
+                    rec_group = TennisGroup.query.get(report.group_id).name
+                    recommended_groups[rec_group] = recommended_groups.get(rec_group, 0) + 1
+            
+            # Get all coaches if admin/super_admin
+            coaches = None
+            if current_user.is_admin() or current_user.is_super_admin():
+                coaches = User.query.filter_by(
+                    tennis_club_id=current_user.tennis_club_id,
+                    role=UserRole.COACH
+                ).all()
+                
+                # Get reports by coach
+                coach_summaries = {}
+                for coach in coaches:
+                    coach_reports = Report.query.filter_by(
+                        coach_id=coach.id,
+                        teaching_period_id=selected_period_id
+                    ).count()
+                    coach_total_players = ProgrammePlayers.query.filter_by(
+                        coach_id=coach.id,
+                        teaching_period_id=selected_period_id
+                    ).count()
+                    coach_summaries[coach.id] = {
+                        'total_players': coach_total_players,
+                        'reports_submitted': coach_reports,
+                        'completion_rate': (coach_reports / coach_total_players * 100) if coach_total_players > 0 else 0
+                    }
+        else:
+            programme_players = []
+            report_map = {}
+            coaches = None
+            current_groups = {}
+            recommended_groups = {}
+            coach_summaries = {}
+
         return render_template('pages/dashboard.html',
-                             periods=periods,
-                             selected_period_id=selected_period_id,
-                             groups=groups,
-                             group_reports=group_reports,
-                             recent_reports=recent_reports)
-                             
+                            periods=periods,
+                            selected_period_id=selected_period_id,
+                            programme_players=programme_players,
+                            report_map=report_map,
+                            coaches=coaches,
+                            current_groups=current_groups,
+                            recommended_groups=recommended_groups,
+                            coach_summaries=coach_summaries if 'coach_summaries' in locals() else {},
+                            is_admin=current_user.is_admin() or current_user.is_super_admin())
+
     except Exception as e:
         print(f"Dashboard error: {str(e)}")
         print(f"Full traceback: {traceback.format_exc()}")
-        flash("Error loading dashboard")
+        flash("Error loading dashboard", "error")
         return redirect(url_for('main.home'))
 
 @main.route('/upload', methods=['GET', 'POST'])
@@ -368,30 +416,6 @@ def home():
         print(f"Error in home route: {str(e)}")
         flash("Error loading dashboard data", "error")
         return redirect(url_for('main.index'))
-    
-@main.route('/reports/<int:group_id>')
-@login_required
-def view_group_reports(group_id):
-    group = TennisGroup.query.get_or_404(group_id)
-    selected_period_id = request.args.get('teaching_period_id', type=int)
-    
-    # Get all periods
-    periods = TeachingPeriod.query.order_by(TeachingPeriod.start_date.desc()).all()
-    if not selected_period_id and periods:
-        selected_period_id = periods[0].id
-
-    # Get reports for this group and term
-    reports = Report.query.filter_by(
-        coach_id=current_user.id,
-        group_id=group_id,
-        teaching_period_id=selected_period_id
-    ).order_by(Report.date.desc()).all()
-
-    return render_template('pages/group_reports.html',
-                         group=group,
-                         reports=reports,
-                         periods=periods,
-                         selected_period_id=selected_period_id)
 
 @main.route('/report/<int:report_id>')
 @login_required
@@ -402,33 +426,6 @@ def view_report(report_id):
         return redirect(url_for('main.dashboard'))
     
     return render_template('pages/report_detail.html', report=report)
-
-@main.route('/report/<int:report_id>/edit', methods=['GET', 'POST'])
-@login_required
-def edit_report(report_id):
-    report = Report.query.get_or_404(report_id)
-    if report.coach_id != current_user.id:
-        flash('You do not have permission to edit this report')
-        return redirect(url_for('main.dashboard'))
-    
-    if request.method == 'POST':
-        try:
-            report.forehand = request.form['forehand']
-            report.backhand = request.form['backhand']
-            report.movement = request.form['movement']
-            report.overall_rating = int(request.form['overall_rating'])
-            report.next_group_recommendation = request.form['next_group_recommendation']
-            report.notes = request.form['notes']
-            
-            db.session.commit()
-            flash('Report updated successfully')
-            return redirect(url_for('main.view_report', report_id=report.id))
-            
-        except Exception as e:
-            db.session.rollback()
-            flash(f'Error updating report: {str(e)}')
-    
-    return render_template('pages/edit_report.html', report=report)
 
 @main.route('/download_reports')
 @login_required
@@ -527,3 +524,152 @@ def manage_coaches():
     
     return render_template('admin/coaches.html', coaches=coaches)
 
+@main.route('/report/create/<int:player_id>', methods=['GET', 'POST'])
+@login_required
+def create_report(player_id):
+    # Get player with relationships to avoid multiple queries
+    player = ProgrammePlayers.query.get_or_404(player_id)
+    
+    if player.coach_id != current_user.id:
+        flash('You do not have permission to create a report for this player', 'error')
+        return redirect(url_for('main.dashboard'))
+    
+    # Check if report already exists
+    existing_report = Report.query.filter_by(
+        student_id=player.student_id,
+        teaching_period_id=player.teaching_period_id
+    ).first()
+    
+    if existing_report:
+        flash('A report already exists for this student in this teaching period', 'error')
+        return redirect(url_for('main.dashboard'))
+    
+    # Get the groups for the current user's tennis club
+    groups = TennisGroup.query.filter_by(
+        tennis_club_id=current_user.tennis_club_id
+    ).order_by(TennisGroup.name).all()
+    
+    if request.method == 'POST':
+        try:
+            # Validate required fields
+            required_fields = ['forehand', 'backhand', 'movement', 'overall_rating', 
+                             'next_group_recommendation', 'notes']
+            
+            for field in required_fields:
+                if not request.form.get(field):
+                    flash(f'The {field.replace("_", " ")} field is required', 'error')
+                    return render_template('pages/create_report.html', 
+                                        player=player, 
+                                        groups=groups)
+            
+            # Validate overall rating
+            try:
+                overall_rating = int(request.form['overall_rating'])
+                if not 1 <= overall_rating <= 5:
+                    raise ValueError("Rating must be between 1 and 5")
+            except ValueError as e:
+                flash(f'Invalid overall rating: {str(e)}', 'error')
+                return render_template('pages/create_report.html', 
+                                    player=player, 
+                                    groups=groups)
+            
+            # Create new report
+            report = Report(
+                student_id=player.student_id,
+                coach_id=current_user.id,
+                teaching_period_id=player.teaching_period_id,
+                programme_player_id=player.id,  # Add this line
+                group_id=int(request.form['next_group_recommendation']),
+                forehand=request.form['forehand'],
+                backhand=request.form['backhand'],
+                movement=request.form['movement'],
+                overall_rating=overall_rating,
+                next_group_recommendation=request.form['next_group_recommendation'],
+                notes=request.form['notes'],
+                date=datetime.utcnow()  # Add this line if date is required
+            )
+            
+            db.session.add(report)
+            player.report_submitted = True
+            
+            try:
+                db.session.commit()
+                flash('Report created successfully', 'success')
+                return redirect(url_for('main.dashboard'))
+            except SQLAlchemyError as e:
+                db.session.rollback()
+                flash(f'Database error: {str(e)}', 'error')
+                print(f"Database error: {str(e)}")  # For debugging
+                
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error creating report: {str(e)}', 'error')
+            print(f"Error creating report: {str(e)}")  # For debugging
+    
+    return render_template('pages/create_report.html', 
+                         player=player, 
+                         groups=groups)
+
+@main.route('/report/<int:report_id>/edit', methods=['GET', 'POST'])
+@login_required
+def edit_report(report_id):
+    # Get report with relationships
+    report = Report.query.get_or_404(report_id)
+    
+    if report.coach_id != current_user.id:
+        flash('You do not have permission to edit this report', 'error')
+        return redirect(url_for('main.dashboard'))
+    
+    # Get the groups for the current user's tennis club
+    groups = TennisGroup.query.filter_by(
+        tennis_club_id=current_user.tennis_club_id
+    ).order_by(TennisGroup.name).all()
+    
+    if request.method == 'POST':
+        try:
+            # Validate required fields
+            required_fields = ['forehand', 'backhand', 'movement', 'overall_rating', 
+                             'next_group_recommendation', 'notes']
+            
+            for field in required_fields:
+                if not request.form.get(field):
+                    flash(f'The {field.replace("_", " ")} field is required', 'error')
+                    return render_template('pages/edit_report.html', 
+                                        report=report, 
+                                        groups=groups)
+            
+            # Validate overall rating
+            try:
+                overall_rating = int(request.form['overall_rating'])
+                if not 1 <= overall_rating <= 5:
+                    raise ValueError("Rating must be between 1 and 5")
+            except ValueError as e:
+                flash(f'Invalid overall rating: {str(e)}', 'error')
+                return render_template('pages/edit_report.html', 
+                                    report=report, 
+                                    groups=groups)
+            
+            # Update report fields
+            report.forehand = request.form['forehand']
+            report.backhand = request.form['backhand']
+            report.movement = request.form['movement']
+            report.overall_rating = overall_rating
+            report.next_group_recommendation = request.form['next_group_recommendation']
+            report.notes = request.form['notes']
+            
+            try:
+                db.session.commit()
+                flash('Report updated successfully', 'success')
+                return redirect(url_for('main.dashboard'))
+            except SQLAlchemyError as e:
+                db.session.rollback()
+                flash(f'Database error: {str(e)}', 'error')
+                
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error updating report: {str(e)}', 'error')
+            print(f"Error updating report: {str(e)}")  # For debugging
+    
+    return render_template('pages/edit_report.html', 
+                         report=report, 
+                         groups=groups)

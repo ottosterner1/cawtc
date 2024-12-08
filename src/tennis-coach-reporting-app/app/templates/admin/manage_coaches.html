@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-2xl font-bold text-gray-900">Coach Management</h1>
+    </div>
+
+    <!-- Coaches List -->
+    <div class="space-y-6">
+        {% for coach in coaches %}
+        {% set details = coach_details_map.get(coach.id) %}
+        <div class="bg-white shadow rounded-lg overflow-hidden">
+            <!-- Coach Header -->
+            <div class="px-6 py-4 border-b border-gray-200">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-900">{{ coach.name }}</h3>
+                        <div class="mt-1 space-x-2">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                {{ details.qualification.value if details and details.qualification else 'No Qualification' }}
+                            </span>
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                {{ details.coach_role.value if details and details.coach_role else 'No Role' }}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button onclick="toggleInfo('coach-info-{{ coach.id }}')" 
+                                class="inline-flex items-center px-3 py-1 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                            Info
+                        </button>
+                        <a href="{{ url_for('club_management.edit_coach', club_id=club.id, coach_id=coach.id) }}"
+                           class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200">
+                            Edit
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Status Cards -->
+            <div class="px-6 py-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {% if details %}
+                    {% for status_type in ['accreditation', 'dbs', 'first_aid', 'safeguarding'] %}
+                        {% set status_data = get_status_data(details, status_type) %}
+                        <div class="rounded-lg border p-4 {{ status_data.color_class }}">
+                            <div class="text-sm font-medium mb-1">{{ status_data.label }}</div>
+                            <div class="text-sm">{{ status_data.message }}</div>
+                            {% if status_type == 'dbs' and details.dbs_number %}
+                            <div class="text-xs text-gray-500 mt-1">DBS: {{ details.dbs_number }}</div>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            </div>
+
+            <!-- Collapsible Info Section -->
+            <!-- Collapsible Info Section -->
+            <div id="coach-info-{{ coach.id }}" class="hidden px-6 py-4 bg-gray-50 border-t border-gray-200">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <!-- Personal Information -->
+                    <div>
+                        <h4 class="text-sm font-medium text-gray-900 mb-2">Personal Information</h4>
+                        <dl class="space-y-1">
+                            <div>
+                                <dt class="text-xs text-gray-500">Coach Number</dt>
+                                <dd class="text-sm">{{ details.coach_number if details and details.coach_number else 'Not set' }}</dd>
+                            </div>
+                            <div>
+                                <dt class="text-xs text-gray-500">Date of Birth</dt>
+                                <dd class="text-sm">{{ details.date_of_birth.strftime('%d %B %Y') if details and details.date_of_birth else 'Not set' }}</dd>
+                            </div>
+                            <div>
+                                <dt class="text-xs text-gray-500">Contact Number</dt>
+                                <dd class="text-sm">{{ details.contact_number if details and details.contact_number else 'Not set' }}</dd>
+                            </div>
+                            <div>
+                                <dt class="text-xs text-gray-500">UTR Number</dt>
+                                <dd class="text-sm">{{ details.utr_number if details and details.utr_number else 'Not set' }}</dd>
+                            </div>
+                        </dl>
+                    </div>
+
+                    <!-- Emergency Contact -->
+                    <div>
+                        <h4 class="text-sm font-medium text-gray-900 mb-2">Emergency Contact</h4>
+                        <dl class="space-y-1">
+                            <div>
+                                <dt class="text-xs text-gray-500">Name</dt>
+                                <dd class="text-sm">{{ details.emergency_contact_name if details and details.emergency_contact_name else 'Not set' }}</dd>
+                            </div>
+                            <div>
+                                <dt class="text-xs text-gray-500">Contact Number</dt>
+                                <dd class="text-sm">{{ details.emergency_contact_number if details and details.emergency_contact_number else 'Not set' }}</dd>
+                            </div>
+                        </dl>
+                    </div>
+
+                    <!-- Address -->
+                    <div>
+                        <h4 class="text-sm font-medium text-gray-900 mb-2">Address</h4>
+                        <address class="text-sm not-italic">
+                            {{ details.address_line1 if details and details.address_line1 else 'Not set' }}<br>
+                            {% if details and details.address_line2 %}{{ details.address_line2 }}<br>{% endif %}
+                            {{ details.city if details and details.city else 'Not set' }}<br>
+                            {{ details.postcode if details and details.postcode else 'Not set' }}
+                        </address>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<script>
+function toggleInfo(infoId) {
+    const element = document.getElementById(infoId);
+    if (element.classList.contains('hidden')) {
+        element.classList.remove('hidden');
+    } else {
+        element.classList.add('hidden');
+    }
+}
+</script>
+
+{% endblock %}
