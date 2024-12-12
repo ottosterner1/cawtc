@@ -1,5 +1,5 @@
 import traceback
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, jsonify
 from flask_login import login_user, login_required, logout_user, current_user
 from werkzeug.security import check_password_hash, generate_password_hash
 from app.models import User, TennisGroup, TeachingPeriod, Student, Report, UserRole, TennisClub, ProgrammePlayers
@@ -8,13 +8,11 @@ from app.auth import oauth
 from app.clubs.routes import club_management
 import pandas as pd
 from datetime import datetime
-import csv
 from werkzeug.utils import secure_filename
 from flask import session, url_for
 from sqlalchemy.exc import SQLAlchemyError
-import os
-import random
-import string
+from botocore.exceptions import ClientError
+import boto3
 import secrets
 from authlib.integrations.base_client.errors import MismatchingStateError
 from app.utils.report_generator import create_single_report_pdf
@@ -201,7 +199,7 @@ def dashboard():
             )
             
             # If user is not admin/super_admin, filter by coach_id
-            if not (current_user.is_admin() or current_user.is_super_admin()):
+            if not (current_user.is_admin or current_user.is_super_admin):
                 programme_players_query = programme_players_query.filter_by(coach_id=current_user.id)
             
             # Get all relevant programme players
@@ -217,7 +215,7 @@ def dashboard():
             )
             
             # If user is not admin/super_admin, filter by coach_id
-            if not (current_user.is_admin() or current_user.is_super_admin()):
+            if not (current_user.is_admin or current_user.is_super_admin):
                 reports_query = reports_query.filter_by(coach_id=current_user.id)
                 
             reports = reports_query.all()
@@ -242,7 +240,7 @@ def dashboard():
             
             # Get all coaches if admin/super_admin
             coaches = None
-            if current_user.is_admin() or current_user.is_super_admin():
+            if current_user.is_admin or current_user.is_super_admin:
                 coaches = User.query.filter_by(
                     tennis_club_id=current_user.tennis_club_id,
                     role=UserRole.COACH
@@ -272,6 +270,13 @@ def dashboard():
             recommended_groups = {}
             coach_summaries = {}
 
+        # Check if all reports are completed for this period
+        all_reports_completed = False
+        if selected_period_id:
+            total_players = len(programme_players)
+            completed_reports = len(reports)
+            all_reports_completed = total_players > 0 and total_players == completed_reports
+
         return render_template('pages/dashboard.html',
                             periods=periods,
                             selected_period_id=selected_period_id,
@@ -281,13 +286,105 @@ def dashboard():
                             current_groups=current_groups,
                             recommended_groups=recommended_groups,
                             coach_summaries=coach_summaries if 'coach_summaries' in locals() else {},
-                            is_admin=current_user.is_admin() or current_user.is_super_admin())
+                            is_admin=current_user.is_admin or current_user.is_super_admin,
+                            all_reports_completed=all_reports_completed)  # Add this line
 
     except Exception as e:
         print(f"Dashboard error: {str(e)}")
         print(f"Full traceback: {traceback.format_exc()}")
         flash("Error loading dashboard", "error")
         return redirect(url_for('main.home'))
+    
+@main.route('/api/dashboard', methods=['GET'])
+@login_required
+@verify_club_access()
+def dashboard_data():
+    try:
+        tennis_club_id = current_user.tennis_club_id
+        selected_period_id = request.args.get('period', type=int)
+
+        # Get periods
+        periods = TeachingPeriod.query.filter_by(
+            tennis_club_id=tennis_club_id
+        ).order_by(TeachingPeriod.start_date.desc()).all()
+
+        if not selected_period_id and periods:
+            selected_period_id = periods[0].id
+
+        period_data = [{
+            'id': period.id,
+            'name': period.name,
+        } for period in periods]
+
+        if selected_period_id:
+            # Base query for programme players
+            programme_players_query = ProgrammePlayers.query.filter_by(
+                tennis_club_id=tennis_club_id,
+                teaching_period_id=selected_period_id
+            )
+            
+            if not (current_user.is_admin or current_user.is_super_admin):
+                programme_players_query = programme_players_query.filter_by(coach_id=current_user.id)
+            
+            programme_players = programme_players_query.all()
+            
+            # Get reports
+            student_ids = [player.student_id for player in programme_players]
+            reports_query = Report.query.filter(
+                Report.teaching_period_id == selected_period_id,
+                Report.student_id.in_(student_ids) if student_ids else False
+            )
+            
+            if not (current_user.is_admin or current_user.is_super_admin):
+                reports_query = reports_query.filter_by(coach_id=current_user.id)
+                
+            reports = reports_query.all()
+            report_map = {report.student_id: report for report in reports}
+
+            # Process programme players data
+            players_data = [{
+                'id': player.id,
+                'student_name': player.student.name,
+                'student_age': player.student.age,
+                'group_name': player.tennis_group.name,
+                'coach_name': player.coach.name,
+                'has_report': player.student_id in report_map,
+                'report_id': report_map[player.student_id].id if player.student_id in report_map else None
+            } for player in programme_players]
+
+            # Group summaries
+            current_groups = {}
+            recommended_groups = {}
+            for player in programme_players:
+                group_name = player.tennis_group.name
+                current_groups[group_name] = current_groups.get(group_name, 0) + 1
+                if player.student_id in report_map:
+                    report = report_map[player.student_id]
+                    rec_group = TennisGroup.query.get(report.group_id).name
+                    recommended_groups[rec_group] = recommended_groups.get(rec_group, 0) + 1
+
+            return jsonify({
+                'periods': period_data,
+                'selected_period_id': selected_period_id,
+                'players': players_data,
+                'current_groups': [{'name': k, 'count': v} for k, v in current_groups.items()],
+                'recommended_groups': [{'name': k, 'count': v} for k, v in recommended_groups.items()],
+                'is_admin': current_user.is_admin or current_user.is_super_admin
+            })
+
+        return jsonify({
+            'periods': period_data,
+            'selected_period_id': None,
+            'players': [],
+            'current_groups': [],
+            'recommended_groups': [],
+            'is_admin': current_user.is_admin or current_user.is_super_admin
+        })
+
+    except Exception as e:
+        print(f"Dashboard API error: {str(e)}")
+        print(f"Full traceback: {traceback.format_exc()}")
+        return jsonify({'error': 'Error loading dashboard data'}), 500
 
 @main.route('/upload', methods=['GET', 'POST'])
 @login_required
@@ -420,12 +517,15 @@ def home():
 @main.route('/report/<int:report_id>')
 @login_required
 def view_report(report_id):
+    current_period = request.args.get('period')
     report = Report.query.get_or_404(report_id)
     if report.coach_id != current_user.id:
         flash('You do not have permission to view this report')
-        return redirect(url_for('main.dashboard'))
+        return redirect(url_for('main.dashboard', period=current_period))
     
-    return render_template('pages/report_detail.html', report=report)
+    return render_template('pages/report_detail.html', 
+                         report=report,
+                         current_period=current_period)
 
 @main.route('/download_reports')
 @login_required
@@ -527,13 +627,14 @@ def manage_coaches():
 @main.route('/report/create/<int:player_id>', methods=['GET', 'POST'])
 @login_required
 def create_report(player_id):
-    # Get player with relationships to avoid multiple queries
+    current_period = request.args.get('period')
     player = ProgrammePlayers.query.get_or_404(player_id)
     
-    if player.coach_id != current_user.id:
+    # Permission check
+    if not (current_user.is_admin or current_user.is_super_admin) and player.coach_id != current_user.id:
         flash('You do not have permission to create a report for this player', 'error')
-        return redirect(url_for('main.dashboard'))
-    
+        return redirect(url_for('main.dashboard', period=current_period))
+
     # Check if report already exists
     existing_report = Report.query.filter_by(
         student_id=player.student_id,
@@ -542,7 +643,7 @@ def create_report(player_id):
     
     if existing_report:
         flash('A report already exists for this student in this teaching period', 'error')
-        return redirect(url_for('main.dashboard'))
+        return redirect(url_for('main.dashboard', period=current_period))
     
     # Get the groups for the current user's tennis club
     groups = TennisGroup.query.filter_by(
@@ -551,68 +652,48 @@ def create_report(player_id):
     
     if request.method == 'POST':
         try:
-            # Validate required fields
-            required_fields = ['forehand', 'backhand', 'movement', 'overall_rating', 
-                             'next_group_recommendation', 'notes']
-            
-            for field in required_fields:
-                if not request.form.get(field):
-                    flash(f'The {field.replace("_", " ")} field is required', 'error')
-                    return render_template('pages/create_report.html', 
-                                        player=player, 
-                                        groups=groups)
-            
-            # Validate overall rating
-            try:
-                overall_rating = int(request.form['overall_rating'])
-                if not 1 <= overall_rating <= 5:
-                    raise ValueError("Rating must be between 1 and 5")
-            except ValueError as e:
-                flash(f'Invalid overall rating: {str(e)}', 'error')
-                return render_template('pages/create_report.html', 
-                                    player=player, 
-                                    groups=groups)
-            
             # Create new report
             report = Report(
                 student_id=player.student_id,
                 coach_id=current_user.id,
                 teaching_period_id=player.teaching_period_id,
-                programme_player_id=player.id,  # Add this line
+                programme_player_id=player.id,
                 group_id=int(request.form['next_group_recommendation']),
                 forehand=request.form['forehand'],
                 backhand=request.form['backhand'],
                 movement=request.form['movement'],
-                overall_rating=overall_rating,
+                overall_rating=int(request.form['overall_rating']),
                 next_group_recommendation=request.form['next_group_recommendation'],
                 notes=request.form['notes'],
-                date=datetime.utcnow()  # Add this line if date is required
+                date=datetime.utcnow()
             )
             
             db.session.add(report)
             player.report_submitted = True
             
-            try:
-                db.session.commit()
-                flash('Report created successfully', 'success')
-                return redirect(url_for('main.dashboard'))
-            except SQLAlchemyError as e:
-                db.session.rollback()
-                flash(f'Database error: {str(e)}', 'error')
-                print(f"Database error: {str(e)}")  # For debugging
-                
+            db.session.commit()
+            flash('Report created successfully', 'success')
+            return redirect(url_for('main.dashboard', period=current_period))
+            
         except Exception as e:
             db.session.rollback()
             flash(f'Error creating report: {str(e)}', 'error')
-            print(f"Error creating report: {str(e)}")  # For debugging
+            return render_template('pages/create_report.html', 
+                               player=player, 
+                               groups=groups,
+                               current_period=current_period)
     
+    # GET request
     return render_template('pages/create_report.html', 
                          player=player, 
-                         groups=groups)
+                         groups=groups,
+                         current_period=current_period)
 
 @main.route('/report/<int:report_id>/edit', methods=['GET', 'POST'])
 @login_required
 def edit_report(report_id):
+    # Get the current period from query parameters
+    current_period = request.args.get('period')
     # Get report with relationships
     report = Report.query.get_or_404(report_id)
     
@@ -660,7 +741,8 @@ def edit_report(report_id):
             try:
                 db.session.commit()
                 flash('Report updated successfully', 'success')
-                return redirect(url_for('main.dashboard'))
+                # Redirect back to dashboard with the period parameter
+                return redirect(url_for('main.dashboard', period=current_period))
             except SQLAlchemyError as e:
                 db.session.rollback()
                 flash(f'Database error: {str(e)}', 'error')
@@ -668,8 +750,132 @@ def edit_report(report_id):
         except Exception as e:
             db.session.rollback()
             flash(f'Error updating report: {str(e)}', 'error')
-            print(f"Error updating report: {str(e)}")  # For debugging
+            print(f"Error updating report: {str(e)}")
     
     return render_template('pages/edit_report.html', 
                          report=report, 
-                         groups=groups)
+                         groups=groups,
+                         current_period=current_period)
+
+@main.route('/report/<int:report_id>/delete', methods=['POST'])
+@login_required
+def delete_report(report_id):
+    current_period = request.args.get('period')
+    report = Report.query.get_or_404(report_id)
+    
+    if report.coach_id != current_user.id:
+        flash('You do not have permission to delete this report', 'error')
+        return redirect(url_for('main.dashboard', period=current_period))
+    
+    try:
+        programme_player = report.programme_player
+        programme_player.report_submitted = False
+        
+        db.session.delete(report)
+        db.session.commit()
+        flash('Report deleted successfully', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error deleting report: {str(e)}', 'error')
+        return redirect(url_for('main.edit_report', report_id=report_id, period=current_period))
+    
+    return redirect(url_for('main.dashboard', period=current_period))
+
+@main.route('/reports/send/<int:period_id>', methods=['GET', 'POST'])
+@login_required
+@admin_required  # Only admins can send reports
+def send_reports(period_id):
+    period = TeachingPeriod.query.get_or_404(period_id)
+    
+    # Get all reports for this period
+    reports = Report.query.filter_by(teaching_period_id=period_id).all()
+    
+    # Get students with and without email contacts
+    students_with_emails = []
+    students_missing_emails = []
+    
+    for report in reports:
+        if report.student.contact_email:
+            students_with_emails.append(report.student)
+        else:
+            students_missing_emails.append(report.student)
+    
+    if request.method == 'POST':
+        try:
+            # Initialize AWS SES client
+            ses_client = boto3.client('ses',
+                                    region_name=current_app.config['AWS_REGION'],
+                                    aws_access_key_id=current_app.config['AWS_ACCESS_KEY'],
+                                    aws_secret_access_key=current_app.config['AWS_SECRET_KEY'])
+            
+            subject = request.form['email_subject']
+            message = request.form['email_message']
+            sender = current_app.config['AWS_SES_SENDER']
+            
+            success_count = 0
+            error_count = 0
+            
+            for report in reports:
+                if not report.student.contact_email:
+                    continue
+                
+                try:
+                    # Generate PDF
+                    pdf_buffer = BytesIO()
+                    create_single_report_pdf(report, pdf_buffer)
+                    pdf_buffer.seek(0)
+                    
+                    # Create raw email message
+                    response = ses_client.send_raw_email(
+                        Source=sender,
+                        Destinations=[report.student.contact_email],
+                        RawMessage={
+                            'Data': create_multipart_email(
+                                sender=sender,
+                                recipient=report.student.contact_email,
+                                subject=subject,
+                                body=message,
+                                attachment=pdf_buffer,
+                                filename=f"{report.student.name}_tennis_report.pdf"
+                            )
+                        }
+                    )
+                    success_count += 1
+                    
+                except ClientError as e:
+                    print(f"Error sending email to {report.student.name}: {str(e)}")
+                    error_count += 1
+            
+            flash(f'Successfully sent {success_count} reports. {error_count} failed.', 
+                  'success' if error_count == 0 else 'warning')
+            return redirect(url_for('main.dashboard', period=period_id))
+            
+        except Exception as e:
+            flash(f'Error sending reports: {str(e)}', 'error')
+            return redirect(url_for('main.dashboard', period=period_id))
+    
+    return render_template('pages/send_reports.html',
+                         period=period,
+                         total_reports=len(reports),
+                         students_with_email=len(students_with_emails),
+                         students_missing_email=len(students_missing_emails),
+                         missing_emails=students_missing_emails)
+
+def create_multipart_email(sender, recipient, subject, body, attachment, filename):
+    """Helper function to create multipart email with attachment"""
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+    from email.mime.application import MIMEApplication
+    
+    msg = MIMEMultipart()
+    msg['Subject'] = subject
+    msg['From'] = sender
+    msg['To'] = recipient
+    
+    msg.attach(MIMEText(body))
+    
+    part = MIMEApplication(attachment.read())
+    part.add_header('Content-Disposition', 'attachment', filename=filename)
+    msg.attach(part)
+    
+    return msg.as_string()

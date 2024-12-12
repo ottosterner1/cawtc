@@ -11,8 +11,8 @@
         <div class="max-w-7xl mx-auto px-4">
             <div class="flex justify-between h-16">
                 <div class="flex items-center">
-                    <a href="{{ url_for('main.dashboard', group_id=report.group_id) }}" 
-                       class="text-gray-500 hover:text-gray-700">
+                    <a href="{{ url_for('main.dashboard', period=current_period) }}"
+                        class="text-gray-500 hover:text-gray-700">
                         ← Back to Dashboard
                     </a>
                 </div>
@@ -32,8 +32,8 @@
                     </p>
                 </div>
                 <div class="flex space-x-4">
-                    <a href="{{ url_for('main.edit_report', report_id=report.id) }}" 
-                       class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 transition-colors">
+                    <a href="{{ url_for('main.edit_report', report_id=report.id, period=current_period) }}"
+                        class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 transition-colors">
                         Edit Report
                     </a>
                     <a href="{{ url_for('main.download_single_report', report_id=report.id) }}"

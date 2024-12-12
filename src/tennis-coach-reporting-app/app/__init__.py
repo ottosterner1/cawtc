@@ -1,17 +1,23 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
+from flask_migrate import Migrate
 from config import Config
 import os
 from app.auth import init_oauth
+from flask_cors import CORS
+
+
 
 # Initialize extensions
 db = SQLAlchemy()
+migrate = Migrate()
 login_manager = LoginManager()
 
 def register_extensions(app): 
     """Register Flask extensions."""
     db.init_app(app)
+    migrate.init_app(app, db)  # Add Flask-Migrate
     login_manager.init_app(app)
     init_oauth(app)
 
@@ -33,19 +39,11 @@ def configure_login_manager(app):
         from app.models import User
         return User.query.get(int(user_id))
 
-def configure_database(app):
-    """Configure and initialize the database."""
-    with app.app_context():
-        try:
-            db.create_all()
-            print("Database tables created successfully")
-        except Exception as e:
-            print(f"Error creating database tables: {e}")
-            raise
 
 def create_app(config_class=Config):
     """Application factory function."""
     app = Flask(__name__)
+    CORS(app)
     
     # Configure the app
     app.config.from_object(config_class)
@@ -71,9 +69,6 @@ def create_app(config_class=Config):
         db.session.rollback()
         return "Internal server error", 500
         
-    # Initialize database
-    configure_database(app)
-    
     return app
 
 # Import models after db initialization to avoid circular imports

@@ -90,7 +90,7 @@ def manage_club(club_id):
    
    club = TennisClub.query.get_or_404(club_id)
    
-   if not current_user.is_admin() and not current_user.is_super_admin():
+   if not current_user.is_admin and not current_user.is_super_admin:
        print(f"Access denied: User {current_user.id} is not an admin")
        flash('You must be an admin to manage club settings', 'error')
        return redirect(url_for('main.home'))
@@ -117,111 +117,83 @@ def manage_club(club_id):
 @club_management.route('/manage/<int:club_id>/teaching-periods', methods=['GET', 'POST'])
 @login_required
 def manage_teaching_periods(club_id):
-   print(f"Managing teaching periods for club {club_id}")
-   
-   club = TennisClub.query.get_or_404(club_id)
-   
-   if not current_user.is_admin() and not current_user.is_super_admin():
-       flash('You must be an admin to manage teaching periods', 'error')
-       return redirect(url_for('main.home'))
-       
-   if current_user.tennis_club_id != club.id:
-       flash('You can only manage teaching periods for your own tennis club', 'error')
-       return redirect(url_for('main.home'))
-   
-   if request.method == 'POST':
-       try:
-           name = request.form['name']
-           start_date = datetime.strptime(request.form['start_date'], '%Y-%m-%d')
-           end_date = datetime.strptime(request.form['end_date'], '%Y-%m-%d')
-           
-           if start_date > end_date:
-               flash('Start date must be before end date', 'error')
-           else:
-               period = TeachingPeriod(
-                   name=name,
-                   start_date=start_date,
-                   end_date=end_date,
-                   tennis_club_id=club.id
-               )
-               db.session.add(period)
-               db.session.commit()
-               flash('Teaching period created successfully', 'success')
-               return redirect(url_for('club_management.manage_teaching_periods', club_id=club.id))
-               
-       except Exception as e:
-           db.session.rollback()
-           print(f"Error creating teaching period: {str(e)}")
-           print(traceback.format_exc())
-           flash(f'Error creating teaching period: {str(e)}', 'error')
-   
-   teaching_periods = TeachingPeriod.query.filter_by(
-       tennis_club_id=club.id
-   ).order_by(TeachingPeriod.start_date.desc()).all()
-   
-   return render_template('admin/manage_teaching_periods.html', 
-                        club=club, 
-                        teaching_periods=teaching_periods)
+    print(f"Managing teaching periods for club {club_id}")
+    
+    club = TennisClub.query.get_or_404(club_id)
+    
+    if not current_user.is_admin and not current_user.is_super_admin:
+        flash('You must be an admin to manage teaching periods', 'error')
+        return redirect(url_for('main.home'))
+        
+    if current_user.tennis_club_id != club.id:
+        flash('You can only manage teaching periods for your own tennis club', 'error')
+        return redirect(url_for('main.home'))
+    
+    if request.method == 'POST':
+        action = request.form.get('action')
+        
+        try:
+            if action == 'add_period':
+                # Handle adding new period
+                name = request.form['name']
+                start_date = datetime.strptime(request.form['start_date'], '%Y-%m-%d')
+                end_date = datetime.strptime(request.form['end_date'], '%Y-%m-%d')
+                
+                if start_date > end_date:
+                    flash('Start date must be before end date', 'error')
+                else:
+                    period = TeachingPeriod(
+                        name=name,
+                        start_date=start_date,
+                        end_date=end_date,
+                        tennis_club_id=club.id
+                    )
+                    db.session.add(period)
+                    db.session.commit()
+                    flash('Teaching period created successfully', 'success')
 
-@club_management.route('/manage/<int:club_id>/teaching-periods/<int:teaching_period_id>/edit', methods=['GET', 'POST'])
-@login_required
-def edit_teaching_period(club_id, teaching_period_id):
-   club = TennisClub.query.get_or_404(club_id)
-   period = TeachingPeriod.query.get_or_404(teaching_period_id)
-   
-   if not current_user.is_admin() and not current_user.is_super_admin():
-       flash('You must be an admin to edit teaching periods', 'error')
-       return redirect(url_for('main.home'))
-       
-   if current_user.tennis_club_id != club.id:
-       flash('You can only edit teaching periods for your own tennis club', 'error')
-       return redirect(url_for('main.home'))
-   
-   if request.method == 'POST':
-       try:
-           period.name = request.form['name']
-           period.start_date = datetime.strptime(request.form['start_date'], '%Y-%m-%d')
-           period.end_date = datetime.strptime(request.form['end_date'], '%Y-%m-%d')
-           
-           if period.start_date > period.end_date:
-               flash('Start date must be before end date', 'error')
-           else:
-               db.session.commit()
-               flash('Teaching period updated successfully', 'success')
-               return redirect(url_for('club_management.manage_teaching_periods', club_id=club.id))
-               
-       except Exception as e:
-           db.session.rollback()
-           flash(f'Error updating teaching period: {str(e)}', 'error')
-   
-   return render_template('admin/edit_teaching_period.html', club=club, period=period)
+            elif action == 'edit_period':
+                # Handle editing period
+                period_id = request.form.get('period_id')
+                period = TeachingPeriod.query.get_or_404(period_id)
+                
+                period.name = request.form['name']
+                period.start_date = datetime.strptime(request.form['start_date'], '%Y-%m-%d')
+                period.end_date = datetime.strptime(request.form['end_date'], '%Y-%m-%d')
+                
+                if period.start_date > period.end_date:
+                    flash('Start date must be before end date', 'error')
+                else:
+                    db.session.commit()
+                    flash('Teaching period updated successfully', 'success')
 
-@club_management.route('/manage/<int:club_id>/teaching-periods/<int:teaching_period_id>/delete', methods=['POST'])
-@login_required
-def delete_teaching_period(club_id, teaching_period_id):
-   club = TennisClub.query.get_or_404(club_id)
-   period = TeachingPeriod.query.get_or_404(teaching_period_id)
-   
-   if not current_user.is_admin() and not current_user.is_super_admin():
-       flash('You must be an admin to delete teaching periods', 'error')
-       return redirect(url_for('main.home'))
-       
-   if current_user.tennis_club_id != club.id:
-       flash('You can only delete teaching periods for your own tennis club', 'error')
-       return redirect(url_for('main.home'))
-   
-   try:
-       if period.reports:
-           flash('Cannot delete teaching period with existing reports', 'error')
-       else:
-           db.session.delete(period)
-           db.session.commit()
-           flash('Teaching period deleted successfully', 'success')
-   except Exception as e:
-       db.session.rollback()
-       flash(f'Error deleting teaching period: {str(e)}', 'error')
-   
-   return redirect(url_for('club_management.manage_teaching_periods', club_id=club.id))
+            elif action == 'delete_period':
+                # Handle deleting period
+                period_id = request.form.get('period_id')
+                period = TeachingPeriod.query.get_or_404(period_id)
+                
+                if period.reports.count() > 0:  # Changed from if period.reports:
+                    flash('Cannot delete teaching period with existing reports', 'error')
+                else:
+                    db.session.delete(period)
+                    db.session.commit()
+                    flash('Teaching period deleted successfully', 'success')
+                    
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error managing teaching period: {str(e)}")
+            print(traceback.format_exc())
+            flash(f'Error managing teaching period: {str(e)}', 'error')
+
+        return redirect(url_for('club_management.manage_teaching_periods', club_id=club.id))
+    
+    teaching_periods = TeachingPeriod.query.filter_by(
+        tennis_club_id=club.id
+    ).order_by(TeachingPeriod.start_date.desc()).all()
+    
+    return render_template('admin/manage_teaching_periods.html', 
+                         club=club, 
+                         teaching_periods=teaching_periods)
 
 @club_management.route('/onboard-coach', methods=['GET', 'POST'])
 def onboard_coach():
@@ -513,7 +485,7 @@ def download_assignment_template(club_id):
 def add_player(club_id):
     club = TennisClub.query.get_or_404(club_id)
 
-    if not (current_user.is_admin() or current_user.is_super_admin()):
+    if not (current_user.is_admin or current_user.is_super_admin):
         current_app.logger.error(f"User {current_user.id} is not an admin, access denied")
         flash('You must be an admin to add players', 'error')
         return redirect(url_for('main.dashboard'))
@@ -616,7 +588,7 @@ def edit_player(club_id, player_id):
     club = TennisClub.query.get_or_404(club_id)
     player = ProgrammePlayers.query.get_or_404(player_id)
     
-    if not (current_user.is_admin() or current_user.is_super_admin()):
+    if not (current_user.is_admin or current_user.is_super_admin):
         flash('You must be an admin to edit players', 'error')
         return redirect(url_for('main.dashboard'))
         
@@ -682,7 +654,7 @@ def delete_player(club_id, player_id):
     club = TennisClub.query.get_or_404(club_id)
     player = ProgrammePlayers.query.get_or_404(player_id)
     
-    if not (current_user.is_admin() or current_user.is_super_admin()):
+    if not (current_user.is_admin or current_user.is_super_admin):
         flash('You must be an admin to delete players', 'error')
         return redirect(url_for('main.dashboard'))
         

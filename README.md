@@ -18,6 +18,10 @@ pyinstaller --onefile --windowed \
     --hidden-import=pandas \
     src/contact_details_registers.py
 
+## Directory Structure Coaching app
+tree -I "__pycache__|venv|node_modules"
+flask run --host=localhost --port 3000
+
 
 
 ## Flask coaching app

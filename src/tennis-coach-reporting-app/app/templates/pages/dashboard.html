@@ -4,17 +4,29 @@
     <h1 class="text-2xl font-bold text-gray-900 mb-6">Reports Dashboard</h1>
 
     <div class="mb-6">
-        <div class="flex-1">
-            <form method="get" action="{{ url_for('main.dashboard') }}">
-                <label for="period" class="block text-sm font-medium text-gray-700">Select Teaching Period:</label>
-                <select id="period" name="period" onchange="this.form.submit()" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
-                    {% for period in periods %}
-                    <option value="{{ period.id }}" {% if period.id == selected_period_id %}selected{% endif %}>
-                        {{ period.name }}
-                    </option>
-                    {% endfor %}
-                </select>
-            </form>
+        <div class="flex justify-between items-center gap-4">
+            <div class="w-64"> <!-- Fixed width for the period selector -->
+                <form method="get" action="{{ url_for('main.dashboard') }}">
+                    <label for="period" class="block text-sm font-medium text-gray-700">Select Teaching Period:</label>
+                    <select id="period" name="period" onchange="this.form.submit()" 
+                            class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
+                        {% for period in periods %}
+                        <option value="{{ period.id }}" {% if period.id == selected_period_id %}selected{% endif %}>
+                            {{ period.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </form>
+            </div>
+            
+            {% if all_reports_completed %}
+            <div class="flex-shrink-0"> <!-- Prevent button from growing -->
+                <a href="{{ url_for('main.send_reports', period_id=selected_period_id) }}" 
+                   class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Bulk Email Reports
+                </a>
+            </div>
+            {% endif %}
         </div>
     </div>
 
@@ -123,14 +135,14 @@
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {% if player.student_id in report_map %}
                         <div class="flex space-x-2">
-                            <a href="{{ url_for('main.edit_report', report_id=report_map[player.student_id].id) }}" 
-                               class="text-indigo-600 hover:text-indigo-900">Edit Report</a>
-                            <a href="{{ url_for('main.view_report', report_id=report_map[player.student_id].id) }}" 
-                               class="text-green-600 hover:text-green-900">View Report</a>
+                            <a href="{{ url_for('main.edit_report', report_id=report_map[player.student_id].id, period=selected_period_id) }}" 
+                                class="text-indigo-600 hover:text-indigo-900">Edit Report</a>
+                            <a href="{{ url_for('main.view_report', report_id=report_map[player.student_id].id, period=selected_period_id) }}" 
+                                class="text-green-600 hover:text-green-900">View Report</a>
                         </div>
                         {% else %}
-                        <a href="{{ url_for('main.create_report', player_id=player.id) }}" 
-                           class="text-indigo-600 hover:text-indigo-900">Create Report</a>
+                        <a href="{{ url_for('main.create_report', player_id=player.id, period=selected_period_id) }}" 
+                            class="text-indigo-600 hover:text-indigo-900">Create Report</a>
                         {% endif %}
                     </td>
                 </tr>
