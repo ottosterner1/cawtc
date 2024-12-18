@@ -21,7 +21,6 @@ from app.clubs.middleware import verify_club_access
 from flask import send_file, make_response
 from io import BytesIO
 import zipfile
-from app.config.clubs import get_club_from_email, TENNIS_CLUBS
 
 main = Blueprint('main', __name__)
 
