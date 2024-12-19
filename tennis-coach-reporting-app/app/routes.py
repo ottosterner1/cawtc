@@ -26,8 +26,12 @@ import zipfile
 =======
 from app.config.clubs import get_club_from_email, TENNIS_CLUBS
 from flask_cors import CORS, cross_origin
+<<<<<<< HEAD
 from sqlalchemy import func
 >>>>>>> 1d721ff (Getting a more complex dashboard working)
+=======
+from sqlalchemy import func, distinct, and_
+>>>>>>> 091dcc2 (Finalising React dashboard component)
 
 main = Blueprint('main', __name__)
 
@@ -222,125 +226,6 @@ def serialize_coach(coach):
         'email': coach.email
     }
 
-# @main.route('/dashboard')
-# @login_required
-# @verify_club_access()
-# def dashboard():
-#     try:
-#         # Get periods for this club only
-#         periods = TeachingPeriod.query.filter_by(
-#             tennis_club_id=current_user.tennis_club_id
-#         ).order_by(TeachingPeriod.start_date.desc()).all()
-
-#         # Get selected period or default to most recent
-#         selected_period_id = request.args.get('period', type=int)
-#         if not selected_period_id and periods:
-#             selected_period_id = periods[0].id
-
-#         # Initialize data structures
-#         dashboard_data = {
-#             'periods': [serialize_period(p) for p in periods],
-#             'selected_period_id': selected_period_id,
-#             'programme_players': [],
-#             'report_map': {},
-#             'current_groups': {},
-#             'recommended_groups': {},
-#             'coach_summaries': {},
-#             'is_admin': current_user.is_admin or current_user.is_super_admin,
-#             'all_reports_completed': False
-#         }
-
-#         if selected_period_id:
-#             # Base query for programme players with eager loading
-#             programme_players_query = ProgrammePlayers.query.options(
-#                 joinedload(ProgrammePlayers.tennis_group),
-#                 joinedload(ProgrammePlayers.student)
-#             ).filter_by(
-#                 tennis_club_id=current_user.tennis_club_id,
-#                 teaching_period_id=selected_period_id
-#             )
-            
-#             # Filter by coach if not admin
-#             if not dashboard_data['is_admin']:
-#                 programme_players_query = programme_players_query.filter_by(coach_id=current_user.id)
-            
-#             programme_players = programme_players_query.all()
-#             dashboard_data['programme_players'] = [
-#                 serialize_programme_player(p) for p in programme_players
-#             ]
-
-#             # Get student IDs for all players
-#             student_ids = [p.student_id for p in programme_players]
-            
-#             # Get reports
-#             reports_query = Report.query.options(
-#                 joinedload(Report.tennis_group)
-#             ).filter(
-#                 Report.teaching_period_id == selected_period_id,
-#                 Report.student_id.in_(student_ids) if student_ids else False
-#             )
-            
-#             if not dashboard_data['is_admin']:
-#                 reports_query = reports_query.filter_by(coach_id=current_user.id)
-                
-#             reports = reports_query.all()
-#             dashboard_data['report_map'] = {
-#                 r.student_id: serialize_report(r) for r in reports
-#             }
-
-#             # Calculate group distributions
-#             for player in programme_players:
-#                 group_name = player.tennis_group.name
-#                 dashboard_data['current_groups'][group_name] = \
-#                     dashboard_data['current_groups'].get(group_name, 0) + 1
-                
-#                 if player.student_id in dashboard_data['report_map']:
-#                     report = dashboard_data['report_map'][player.student_id]
-#                     rec_group = TennisGroup.query.get(report['group_id']).name
-#                     dashboard_data['recommended_groups'][rec_group] = \
-#                         dashboard_data['recommended_groups'].get(rec_group, 0) + 1
-
-#             # Get coach summaries for admin view
-#             if dashboard_data['is_admin']:
-#                 coaches = User.query.filter_by(
-#                     tennis_club_id=current_user.tennis_club_id,
-#                     role=UserRole.COACH
-#                 ).all()
-                
-#                 for coach in coaches:
-#                     coach_reports = Report.query.filter_by(
-#                         coach_id=coach.id,
-#                         teaching_period_id=selected_period_id
-#                     ).count()
-                    
-#                     coach_total_players = ProgrammePlayers.query.filter_by(
-#                         coach_id=coach.id,
-#                         teaching_period_id=selected_period_id
-#                     ).count()
-                    
-#                     dashboard_data['coach_summaries'][coach.id] = {
-#                         'coach': serialize_coach(coach),
-#                         'total_players': coach_total_players,
-#                         'reports_submitted': coach_reports,
-#                         'completion_rate': (coach_reports / coach_total_players * 100) 
-#                             if coach_total_players > 0 else 0
-#                     }
-
-#             # Calculate completion status
-#             total_players = len(programme_players)
-#             completed_reports = len(reports)
-#             dashboard_data['all_reports_completed'] = \
-#                 total_players > 0 and total_players == completed_reports
-
-#         return render_template('pages/dashboard.html',
-#                             dashboard_data=dashboard_data)
-
-#     except Exception as e:
-#         print(f"Dashboard error: {str(e)}")
-#         print(f"Full traceback: {traceback.format_exc()}")
-#         flash("Error loading dashboard", "error")
-#         return redirect(url_for('main.home'))
-
 
 # Keep your existing dashboard route for the initial page load
 @main.route('/dashboard')
@@ -349,94 +234,98 @@ def serialize_coach(coach):
 def dashboard():
     return render_template('pages/dashboard.html')
 
-@main.route('/api/dashboard')
+# Current user endpoint
+@main.route('/api/current-user')
 @login_required
 @verify_club_access()
-def dashboard_data():
-    try:
-        print("API endpoint hit")  # Debug print
-        tennis_club_id = current_user.tennis_club_id
-        selected_period_id = request.args.get('period', type=int)
-        print(f"Selected period: {selected_period_id}")  # Debug print
-
-        # Get periods
-        periods = TeachingPeriod.query.filter_by(
-            tennis_club_id=tennis_club_id
-        ).order_by(TeachingPeriod.start_date.desc()).all()
-        print(f"Found {len(periods)} periods")  # Debug print
-
-        response_data = {
-            'periods': [{
-                'id': period.id,
-                'name': period.name
-            } for period in periods],
-            'selectedPeriodId': selected_period_id,
-            'players': [],
-            'currentGroups': [],
-            'recommendedGroups': [],
-            'isAdmin': current_user.is_admin or current_user.is_super_admin,
-            'allReportsCompleted': False
-        }
-        print("Sending response:", response_data)  # Debug print
-        return jsonify(response_data)
-
-    except Exception as e:
-        print(f"Error in dashboard_data: {str(e)}")
-        print(traceback.format_exc())
-        return jsonify({'error': str(e)}), 500
+def current_user_info():
+    return jsonify({
+        'id': current_user.id,
+        'name': current_user.name,
+        'is_admin': current_user.is_admin,
+        'is_super_admin': current_user.is_super_admin
+    })
 
 @main.route('/api/dashboard/stats')
 @login_required
 @verify_club_access()
 def dashboard_stats():
     try:
-        print("Dashboard stats endpoint hit")  # Debug print
         tennis_club_id = current_user.tennis_club_id
         selected_period_id = request.args.get('period', type=int)
-        print(f"Tennis club ID: {tennis_club_id}, Selected period: {selected_period_id}")  # Debug print
         
-        # Get all teaching periods for the club
-        periods = TeachingPeriod.query.filter_by(
-            tennis_club_id=tennis_club_id
-        ).order_by(TeachingPeriod.start_date.desc()).all()
-        print(f"Found {len(periods)} periods")  # Debug print
-        
-        # Base queries
+        # Base queries - filter by coach if not admin
         players_query = ProgrammePlayers.query.filter_by(tennis_club_id=tennis_club_id)
+        if not (current_user.is_admin or current_user.is_super_admin):
+            players_query = players_query.filter_by(coach_id=current_user.id)
+            
         if selected_period_id:
             players_query = players_query.filter_by(teaching_period_id=selected_period_id)
             
         total_students = players_query.count()
-        print(f"Total students: {total_students}")  # Debug print
         
+        # Get reports - filter by coach if not admin
         reports_query = Report.query.join(ProgrammePlayers).filter(
             ProgrammePlayers.tennis_club_id == tennis_club_id
         )
+        if not (current_user.is_admin or current_user.is_super_admin):
+            reports_query = reports_query.filter(Report.coach_id == current_user.id)
+            
         if selected_period_id:
             reports_query = reports_query.filter(Report.teaching_period_id == selected_period_id)
             
         total_reports = reports_query.count()
-        print(f"Total reports: {total_reports}")  # Debug print
-        
         completion_rate = round((total_reports / total_students * 100) if total_students > 0 else 0, 1)
         
-        # Group distribution query
-        group_counts = db.session.query(
+        # Get all periods
+        periods = TeachingPeriod.query.filter_by(
+            tennis_club_id=tennis_club_id
+        ).order_by(TeachingPeriod.start_date.desc()).all()
+        
+        # Get group stats
+        group_stats_query = db.session.query(
             TennisGroup.name,
-            func.count(ProgrammePlayers.id).label('count')
+            func.count(distinct(ProgrammePlayers.id)).label('count'),
+            func.count(distinct(Report.id)).label('reports_completed')
         ).join(
             ProgrammePlayers, TennisGroup.id == ProgrammePlayers.group_id
+        ).outerjoin(
+            Report, ProgrammePlayers.id == Report.programme_player_id
         ).filter(
             ProgrammePlayers.tennis_club_id == tennis_club_id
         )
         
         if selected_period_id:
-            group_counts = group_counts.filter(
+            group_stats_query = group_stats_query.filter(
                 ProgrammePlayers.teaching_period_id == selected_period_id
             )
             
-        group_counts = group_counts.group_by(TennisGroup.name).all()
-        print(f"Group counts: {group_counts}")  # Debug print
+        if not (current_user.is_admin or current_user.is_super_admin):
+            group_stats_query = group_stats_query.filter(
+                ProgrammePlayers.coach_id == current_user.id
+            )
+            
+        group_stats = group_stats_query.group_by(TennisGroup.name).all()
+        
+        # Get coach summaries only for admin users
+        coach_summaries = None
+        if current_user.is_admin or current_user.is_super_admin:
+            coach_summaries = []
+            coaches = User.query.filter_by(
+                tennis_club_id=tennis_club_id,
+                role=UserRole.COACH
+            ).all()
+            
+            for coach in coaches:
+                coach_players = players_query.filter_by(coach_id=coach.id)
+                coach_reports = reports_query.filter_by(coach_id=coach.id)
+                
+                coach_summaries.append({
+                    'id': coach.id,
+                    'name': coach.name,
+                    'total_assigned': coach_players.count(),
+                    'reports_completed': coach_reports.count()
+                })
         
         response_data = {
             'periods': [{
@@ -449,16 +338,17 @@ def dashboard_stats():
                 'reportCompletion': completion_rate,
                 'currentGroups': [{
                     'name': name,
-                    'count': count
-                } for name, count in group_counts]
+                    'count': count,
+                    'reports_completed': completed
+                } for name, count, completed in group_stats],
+                'coachSummaries': coach_summaries
             }
         }
-        print("Sending response:", response_data)  # Debug print
         return jsonify(response_data)
         
     except Exception as e:
         print(f"Error in dashboard stats: {str(e)}")
-        print(traceback.format_exc())  # Print full traceback
+        print(traceback.format_exc())
         return jsonify({
             'error': f"Server error: {str(e)}",
             'periods': [],
@@ -466,100 +356,64 @@ def dashboard_stats():
                 'totalStudents': 0,
                 'totalReports': 0,
                 'reportCompletion': 0,
-                'currentGroups': []
+                'currentGroups': [],
+                'coachSummaries': None
             }
         }), 500
-    
-# @main.route('/api/dashboard', methods=['GET'])
-# @login_required
-# @verify_club_access()
-# def dashboard_data():
-#     try:
-#         tennis_club_id = current_user.tennis_club_id
-#         selected_period_id = request.args.get('period', type=int)
 
-#         # Get periods
-#         periods = TeachingPeriod.query.filter_by(
-#             tennis_club_id=tennis_club_id
-#         ).order_by(TeachingPeriod.start_date.desc()).all()
-
-#         if not selected_period_id and periods:
-#             selected_period_id = periods[0].id
-
-#         period_data = [{
-#             'id': period.id,
-#             'name': period.name,
-#         } for period in periods]
-
-#         if selected_period_id:
-#             # Base query for programme players
-#             programme_players_query = ProgrammePlayers.query.filter_by(
-#                 tennis_club_id=tennis_club_id,
-#                 teaching_period_id=selected_period_id
-#             )
+@main.route('/api/programme-players')
+@login_required
+@verify_club_access()
+def programme_players():
+    try:
+        tennis_club_id = current_user.tennis_club_id
+        selected_period_id = request.args.get('period', type=int)
+        
+        # Base query - get all programme players for the club
+        query = ProgrammePlayers.query.filter_by(
+            tennis_club_id=tennis_club_id
+        )
+        
+        if selected_period_id:
+            query = query.filter_by(teaching_period_id=selected_period_id)
+        
+        # For regular coaches, only show players they're assigned to
+        if not (current_user.is_admin or current_user.is_super_admin):
+            query = query.filter_by(coach_id=current_user.id)
             
-#             if not (current_user.is_admin or current_user.is_super_admin):
-#                 programme_players_query = programme_players_query.filter_by(coach_id=current_user.id)
-            
-#             programme_players = programme_players_query.all()
-            
-#             # Get reports
-#             student_ids = [player.student_id for player in programme_players]
-#             reports_query = Report.query.filter(
-#                 Report.teaching_period_id == selected_period_id,
-#                 Report.student_id.in_(student_ids) if student_ids else False
-#             )
-            
-#             if not (current_user.is_admin or current_user.is_super_admin):
-#                 reports_query = reports_query.filter_by(coach_id=current_user.id)
-                
-#             reports = reports_query.all()
-#             report_map = {report.student_id: report for report in reports}
-
-#             # Process programme players data
-#             players_data = [{
-#                 'id': player.id,
-#                 'student_name': player.student.name,
-#                 'student_age': player.student.age,
-#                 'group_name': player.tennis_group.name,
-#                 'coach_name': player.coach.name,
-#                 'has_report': player.student_id in report_map,
-#                 'report_id': report_map[player.student_id].id if player.student_id in report_map else None
-#             } for player in programme_players]
-
-#             # Group summaries
-#             current_groups = {}
-#             recommended_groups = {}
-#             for player in programme_players:
-#                 group_name = player.tennis_group.name
-#                 current_groups[group_name] = current_groups.get(group_name, 0) + 1
-#                 if player.student_id in report_map:
-#                     report = report_map[player.student_id]
-#                     rec_group = TennisGroup.query.get(report.group_id).name
-#                     recommended_groups[rec_group] = recommended_groups.get(rec_group, 0) + 1
-
-#             return jsonify({
-#                 'periods': period_data,
-#                 'selected_period_id': selected_period_id,
-#                 'players': players_data,
-#                 'current_groups': [{'name': k, 'count': v} for k, v in current_groups.items()],
-#                 'recommended_groups': [{'name': k, 'count': v} for k, v in recommended_groups.items()],
-#                 'is_admin': current_user.is_admin or current_user.is_super_admin
-#             })
-
-#         return jsonify({
-#             'periods': period_data,
-#             'selected_period_id': None,
-#             'players': [],
-#             'current_groups': [],
-#             'recommended_groups': [],
-#             'is_admin': current_user.is_admin or current_user.is_super_admin
-#         })
-
-#     except Exception as e:
-#         print(f"Dashboard API error: {str(e)}")
-#         print(f"Full traceback: {traceback.format_exc()}")
-#         return jsonify({'error': 'Error loading dashboard data'}), 500
+        players = query.join(
+            Student, ProgrammePlayers.student_id == Student.id
+        ).join(
+            TennisGroup, ProgrammePlayers.group_id == TennisGroup.id
+        ).outerjoin(
+            Report, and_(
+                ProgrammePlayers.id == Report.programme_player_id,
+                ProgrammePlayers.teaching_period_id == Report.teaching_period_id
+            )
+        ).with_entities(
+            ProgrammePlayers.id,
+            Student.name.label('student_name'),
+            TennisGroup.name.label('group_name'),
+            Report.id.label('report_id'),
+            Report.coach_id,
+            ProgrammePlayers.coach_id.label('assigned_coach_id')
+        ).all()
+        
+        return jsonify([{
+            'id': player.id,
+            'student_name': player.student_name,
+            'group_name': player.group_name,
+            'report_submitted': player.report_id is not None,
+            'report_id': player.report_id,
+            'can_edit': current_user.is_admin or current_user.is_super_admin or 
+                       player.coach_id == current_user.id or 
+                       player.assigned_coach_id == current_user.id
+        } for player in players])
+        
+    except Exception as e:
+        print(f"Error fetching programme players: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify([]), 500
 
 @main.route('/upload', methods=['GET', 'POST'])
 @login_required
