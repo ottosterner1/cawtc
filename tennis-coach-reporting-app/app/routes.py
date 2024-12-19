@@ -22,16 +22,10 @@ from app.clubs.middleware import verify_club_access
 from flask import send_file, make_response
 from io import BytesIO
 import zipfile
-<<<<<<< HEAD
-=======
 from app.config.clubs import get_club_from_email, TENNIS_CLUBS
 from flask_cors import CORS, cross_origin
-<<<<<<< HEAD
 from sqlalchemy import func
->>>>>>> 1d721ff (Getting a more complex dashboard working)
-=======
 from sqlalchemy import func, distinct, and_
->>>>>>> 091dcc2 (Finalising React dashboard component)
 
 main = Blueprint('main', __name__)
 
