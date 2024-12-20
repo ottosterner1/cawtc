@@ -1,6 +1,6 @@
 from flask import Blueprint, request, render_template, flash, redirect, url_for, session, make_response, current_app
 from app import db
-from app.models import TennisClub, User, TennisGroup, TeachingPeriod, UserRole, Student, ProgrammePlayers, CoachDetails, CoachQualification, CoachRole
+from app.models import TennisClub, User, TennisGroup, TeachingPeriod, UserRole, Student, ProgrammePlayers, CoachDetails, CoachQualification, CoachRole, CoachInvitation
 from datetime import datetime, timedelta
 from flask_login import login_required, current_user, login_user
 import traceback
@@ -12,6 +12,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from datetime import datetime, timezone
 import pytz
 import json
+from app.utils.email import send_coach_invitation
+import secrets  # Add this import
 
 # Get UK timezone
 uk_timezone = pytz.timezone('Europe/London')
@@ -47,41 +49,55 @@ def setup_initial_teaching_period(club_id):
        start_date=start_date, 
        end_date=start_date + timedelta(weeks=12)
    ))
-
 @club_management.route('/onboard', methods=['GET', 'POST'])
 def onboard_club():
-   if request.method == 'GET':
-       return render_template('admin/club_onboarding.html')
+    # Check if we have temporary user info
+    temp_user_info = session.get('temp_user_info')
+    if not temp_user_info:
+        flash('Please login first', 'error')
+        return redirect(url_for('main.login'))
 
-   try:
-       club = TennisClub(
-           name=request.form['club_name'],
-           subdomain=request.form['subdomain']
-       )
-       db.session.add(club)
-       db.session.flush()
+    if request.method == 'GET':
+        return render_template('admin/club_onboarding.html', 
+                             email=temp_user_info.get('email'),
+                             name=temp_user_info.get('name'))
 
-       admin = User(
-           email=request.form['admin_email'],
-           username=f"admin_{request.form['subdomain']}",
-           name=request.form['admin_name'],
-           role=UserRole.ADMIN,
-           tennis_club_id=club.id,
-           is_active=True
-       )
-       db.session.add(admin)
-       
-       setup_default_groups(club.id)
-       setup_initial_teaching_period(club.id)
-       
-       db.session.commit()
-       flash('Tennis club created successfully', 'success')
-       return redirect(url_for('main.home'))
-       
-   except Exception as e:
-       db.session.rollback()
-       flash(f'Error creating club: {str(e)}', 'error')
-       return redirect(url_for('club_management.onboard_club'))
+    try:
+        # Create new tennis club
+        club = TennisClub(
+            name=request.form['club_name'],
+            subdomain=request.form['subdomain']
+        )
+        db.session.add(club)
+        db.session.flush()  # Get club ID
+
+        # Create admin user using the Google auth info
+        admin = User(
+            email=temp_user_info['email'],
+            username=f"admin_{request.form['subdomain']}",
+            name=temp_user_info['name'],
+            role=UserRole.ADMIN,
+            tennis_club_id=club.id,
+            auth_provider='google',
+            auth_provider_id=temp_user_info['provider_id'],
+            is_active=True
+        )
+        db.session.add(admin)
+        db.session.commit()
+        
+        # Log the user in and clear session
+        login_user(admin)
+        session.pop('temp_user_info', None)
+        
+        flash('Tennis club created successfully! Please set up your teaching periods and groups.', 'success')
+        return redirect(url_for('main.home'))
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error creating club: {str(e)}")
+        print(traceback.format_exc())
+        flash(f'Error creating club: {str(e)}', 'error')
+        return redirect(url_for('club_management.onboard_club'))
 
 @club_management.route('/manage/<int:club_id>', methods=['GET', 'POST'])
 @login_required
@@ -977,3 +993,98 @@ def edit_coach(club_id, coach_id):
         coach_qualifications=CoachQualification,
         coach_roles=CoachRole
     )
+
+@club_management.route('/manage/<int:club_id>/coaches/invite', methods=['POST'])
+@login_required
+@admin_required
+def invite_coach(club_id):
+    """Invite a new coach to the tennis club"""
+    club = TennisClub.query.get_or_404(club_id)
+    
+    if current_user.tennis_club_id != club.id:
+        flash('You can only invite coaches to your own tennis club', 'error')
+        return redirect(url_for('main.dashboard'))
+    
+    email = request.form.get('email')
+    if not email:
+        flash('Email address is required', 'error')
+        return redirect(url_for('club_management.manage_coaches', club_id=club_id))
+    
+    try:
+        # Create new invitation
+        invitation = CoachInvitation.create_invitation(
+            email=email,
+            tennis_club_id=club.id,
+            invited_by_id=current_user.id,
+            expiry_hours=current_app.config['INVITATION_EXPIRY_HOURS']
+        )
+        
+        # Try to send the email
+        success, message = send_coach_invitation(invitation, club.name)
+        
+        if success:
+            # Save to database if email was sent successfully
+            db.session.add(invitation)
+            db.session.commit()
+            flash('Invitation sent successfully', 'success')
+        else:
+            flash(f'Error sending invitation: {message}. Please try again.', 'error')
+            
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error sending invitation: {str(e)}', 'error')
+    
+    return redirect(url_for('club_management.manage_coaches', club_id=club_id))
+
+@club_management.route('/accept-invitation/<token>')
+def accept_invitation(token):
+    """Handle coach accepting an invitation"""
+    try:
+        # Get invitation and validate
+        invitation = CoachInvitation.query.filter_by(token=token, used=False).first()
+        
+        if not invitation:
+            flash('Invalid invitation link. This invitation may have already been used.', 'error')
+            return redirect(url_for('main.index'))
+        
+        if invitation.is_expired:
+            db.session.delete(invitation)
+            db.session.commit()
+            flash('This invitation has expired. Please request a new invitation.', 'error')
+            return redirect(url_for('main.index'))
+
+        # Generate state and store in session
+        state = secrets.token_urlsafe(32)
+        nonce = secrets.token_urlsafe(32)
+        session['oauth_state'] = state
+        session['oauth_nonce'] = nonce
+        
+        # Store invitation info in session
+        session['pending_invitation'] = {
+            'token': token,
+            'tennis_club_id': invitation.tennis_club_id,
+            'email': invitation.email
+        }
+
+        authorize_params = {
+            'client_id': current_app.config['AWS_COGNITO_CLIENT_ID'],
+            'response_type': 'code',
+            'scope': 'openid email profile',
+            'redirect_uri': url_for('main.auth_callback', _external=True),
+            'state': state,
+            'nonce': nonce
+        }
+        
+        # Build the authorization URL
+        cognito_domain = current_app.config['COGNITO_DOMAIN']
+        params = '&'.join(f"{k}={v}" for k, v in authorize_params.items())
+        hosted_ui_url = f"https://{cognito_domain}/login?{params}"
+        
+        print(f"Redirecting to hosted UI with state: {state}")
+        return redirect(hosted_ui_url)
+        
+    except Exception as e:
+        print(f"Error processing invitation: {str(e)}")
+        print(traceback.format_exc())
+        flash('An error occurred while processing the invitation.', 'error')
+        return redirect(url_for('main.index'))
