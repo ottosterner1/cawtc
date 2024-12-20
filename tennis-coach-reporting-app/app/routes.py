@@ -2,7 +2,7 @@ import traceback
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, jsonify
 from flask_login import login_user, login_required, logout_user, current_user
 from werkzeug.security import check_password_hash, generate_password_hash
-from app.models import User, TennisGroup, TeachingPeriod, Student, Report, UserRole, TennisClub, ProgrammePlayers
+from app.models import User, TennisGroup, TeachingPeriod, Student, Report, UserRole, TennisClub, ProgrammePlayers, CoachInvitation
 from app import db
 from app.auth import oauth
 from app.clubs.routes import club_management
@@ -26,6 +26,7 @@ from app.config.clubs import get_club_from_email, TENNIS_CLUBS
 from flask_cors import CORS, cross_origin
 from sqlalchemy import func
 from sqlalchemy import func, distinct, and_
+from app.services.email_service import EmailService
 
 main = Blueprint('main', __name__)
 
@@ -43,8 +44,8 @@ def allowed_file(filename):
 def index():
     return render_template('pages/index.html')
 
-@main.route('/login')
-def login():
+@main.route('/signup')
+def signup():
     try:
         # Generate secure tokens for both state and nonce
         state = secrets.token_urlsafe(32)
@@ -55,23 +56,48 @@ def login():
         session['oauth_nonce'] = nonce
         
         redirect_uri = url_for('main.auth_callback', _external=True)
-        print(f"Login attempted with redirect URI: {redirect_uri}")
-        print(f"State token generated: {state}")
-        
-        provider = request.args.get('provider')
+        print(f"Signup attempted with redirect URI: {redirect_uri}")
         
         authorize_params = {
             'redirect_uri': redirect_uri,
             'response_type': 'code',
             'state': state,
-            'nonce': nonce,  # Add nonce to the authorization request
-            'scope': 'openid email profile'
+            'nonce': nonce,
+            'scope': 'openid email profile',
+            # Add any additional parameters needed for signup vs login
+            'identity_provider': 'Google',
         }
         
-        if provider == 'Google':
-            authorize_params['identity_provider'] = 'Google'
-        
+        # Redirect to Cognito signup endpoint
         return oauth.cognito.authorize_redirect(**authorize_params)
+        
+    except Exception as e:
+        print(f"Signup error: {str(e)}")
+        print(traceback.format_exc())
+        return f"Signup error: {str(e)}", 500
+
+@main.route('/login')
+def login():
+    try:
+        state = secrets.token_urlsafe(32)
+        session['oauth_state'] = state
+        
+        # Construct the hosted UI URL
+        cognito_domain = current_app.config['COGNITO_DOMAIN']
+        client_id = current_app.config['AWS_COGNITO_CLIENT_ID']
+        redirect_uri = url_for('main.auth_callback', _external=True)
+        
+        hosted_ui_url = (
+            f"https://{cognito_domain}/login"
+            f"?client_id={client_id}"
+            f"&response_type=code"
+            f"&scope=openid+email+profile"
+            f"&redirect_uri={redirect_uri}"
+            f"&state={state}"
+        )
+        
+        print(f"Redirecting to Cognito hosted UI: {hosted_ui_url}")
+        return redirect(hosted_ui_url)
         
     except Exception as e:
         print(f"Login error: {str(e)}")
@@ -89,28 +115,59 @@ def auth_callback():
         code = request.args.get('code')
         
         print(f"State validation: Session state: {state}, Request state: {state_in_request}")
+        print(f"Session contents: {session}")
         
         if not state or state != state_in_request:
             print("State mismatch or missing")
+            print(f"Full request args: {request.args}")
             flash('Invalid state parameter')
             return redirect(url_for('main.login'))
 
         try:
-            # Exchange the authorization code for tokens
-            cognito = oauth.create_client('cognito')
-            if not cognito:
-                raise Exception("Failed to create Cognito client")
+            import requests
+            from base64 import b64encode
 
-            token = cognito.authorize_access_token()
+            # Create basic auth header
+            client_id = current_app.config['AWS_COGNITO_CLIENT_ID']
+            client_secret = current_app.config['AWS_COGNITO_CLIENT_SECRET']
+            auth_string = f"{client_id}:{client_secret}"
+            auth_bytes = auth_string.encode('utf-8')
+            auth_header = b64encode(auth_bytes).decode('utf-8')
+
+            # Exchange the code for tokens
+            token_endpoint = f"https://{current_app.config['COGNITO_DOMAIN']}/oauth2/token"
+            headers = {
+                'Authorization': f'Basic {auth_header}',
+                'Content-Type': 'application/x-www-form-urlencoded'
+            }
+            data = {
+                'grant_type': 'authorization_code',
+                'code': code,
+                'redirect_uri': url_for('main.auth_callback', _external=True)
+            }
+
+            token_response = requests.post(token_endpoint, headers=headers, data=data)
             
-            # Verify token and get user info
-            try:
-                userinfo = cognito.userinfo(token=token)
-                print("User info received:", {k: v for k, v in userinfo.items() if k != 'sub'})
-            except Exception as e:
-                print(f"Error getting user info: {str(e)}")
+            if token_response.status_code != 200:
+                print(f"Token exchange failed: {token_response.text}")
+                raise Exception("Failed to exchange code for tokens")
+
+            token_data = token_response.json()
+
+            # Get user info using the access token
+            userinfo_endpoint = f"https://{current_app.config['COGNITO_DOMAIN']}/oauth2/userInfo"
+            userinfo_headers = {
+                'Authorization': f"Bearer {token_data['access_token']}"
+            }
+            userinfo_response = requests.get(userinfo_endpoint, headers=userinfo_headers)
+            
+            if userinfo_response.status_code != 200:
+                print(f"Userinfo failed: {userinfo_response.text}")
                 raise Exception("Failed to get user info")
-            
+
+            userinfo = userinfo_response.json()
+            print("User info received:", userinfo)
+
             # Extract user information
             email = userinfo.get('email')
             name = userinfo.get('name')
@@ -121,30 +178,52 @@ def auth_callback():
                 flash('Email not provided')
                 return redirect(url_for('main.login'))
 
-            # Check if user exists
+            # Handle pending invitation
+            if 'pending_invitation' in session:
+                invitation_data = session.pop('pending_invitation')
+                invitation = CoachInvitation.query.filter_by(
+                    token=invitation_data['token'],
+                    used=False
+                ).first()
+                
+                if invitation and not invitation.is_expired:
+                    # Create or update user
+                    user = User.query.filter_by(email=email).first()
+                    if not user:
+                        user = User(
+                            email=email,
+                            username=f"coach_{email.split('@')[0]}",
+                            name=name,
+                            role=UserRole.COACH,
+                            tennis_club_id=invitation.tennis_club_id,
+                            auth_provider='google',
+                            auth_provider_id=provider_id,
+                            is_active=True
+                        )
+                        db.session.add(user)
+                    else:
+                        user.tennis_club_id = invitation.tennis_club_id
+                        user.role = UserRole.COACH
+                        
+                    invitation.used = True
+                    db.session.commit()
+                    login_user(user)
+                    flash('Welcome to your tennis club!', 'success')
+                    return redirect(url_for('main.home'))
+
+            # Regular login flow
             user = User.query.filter_by(email=email).first()
-            
-            # If user exists and has a tennis club, proceed with normal login
             if user and user.tennis_club_id:
-                user.auth_provider = 'google'
-                user.auth_provider_id = provider_id
-                if name:
-                    user.name = name
-                db.session.commit()
                 login_user(user)
                 flash('Successfully logged in!')
                 return redirect(url_for('main.home'))
-            
-            # For new users or users without a tennis club, store their info in session
-            # and redirect to onboarding
-            session['temp_user_info'] = {
-                'email': email,
-                'name': name,
-                'provider_id': provider_id,
-                'auth_provider': 'google'
-            }
-            
-            return redirect(url_for('club_management.onboard_coach'))
+            else:
+                session['temp_user_info'] = {
+                    'email': email,
+                    'name': name,
+                    'provider_id': provider_id,
+                }
+                return redirect(url_for('club_management.onboard_club'))
 
         except Exception as e:
             print(f"OAuth exchange error: {str(e)}")
@@ -158,25 +237,27 @@ def auth_callback():
         flash('Authentication error')
         return redirect(url_for('main.login'))
 
-
 @main.route('/logout')
 @login_required
 def logout():
-    session.clear()
+    # Clear Flask-Login session first
     logout_user()
     
+    # Clear any custom session data
+    session.clear()
+    
+    # Build the Cognito logout URL
     cognito_domain = current_app.config['COGNITO_DOMAIN']
     client_id = current_app.config['AWS_COGNITO_CLIENT_ID']
-    # Get the absolute URL for the home page
-    logout_uri = url_for('main.index', _external=True) 
+    logout_uri = url_for('main.index', _external=True)  # Redirect to index page, not home
     
     logout_url = (
         f"https://{cognito_domain}/logout?"
         f"client_id={client_id}&"
-        f"logout_uri={logout_uri}"
+        f"logout_uri={logout_uri}"  # This should go to index, not home
     )
     
-    print(f"Redirecting to logout URL: {logout_url}")  # Debug print
+    print(f"Redirecting to logout URL: {logout_url}")
     return redirect(logout_url)
 
 def serialize_period(period):
@@ -804,101 +885,99 @@ def delete_report(report_id):
     
     return redirect(url_for('main.dashboard', period=current_period))
 
-@main.route('/reports/send/<int:period_id>', methods=['GET', 'POST'])
+@main.route('/api/reports/send/<int:period_id>', methods=['GET', 'POST'])
 @login_required
-@admin_required  # Only admins can send reports
+@admin_required
 def send_reports(period_id):
-    period = TeachingPeriod.query.get_or_404(period_id)
+    print(f"=== send_reports endpoint called with period_id: {period_id} ===")
+    print(f"Request method: {request.method}")
     
-    # Get all reports for this period
-    reports = Report.query.filter_by(teaching_period_id=period_id).all()
-    
-    # Get students with and without email contacts
-    students_with_emails = []
-    students_missing_emails = []
-    
-    for report in reports:
-        if report.student.contact_email:
-            students_with_emails.append(report.student)
-        else:
-            students_missing_emails.append(report.student)
-    
-    if request.method == 'POST':
-        try:
-            # Initialize AWS SES client
-            ses_client = boto3.client('ses',
-                                    region_name=current_app.config['AWS_REGION'],
-                                    aws_access_key_id=current_app.config['AWS_ACCESS_KEY'],
-                                    aws_secret_access_key=current_app.config['AWS_SECRET_KEY'])
-            
-            subject = request.form['email_subject']
-            message = request.form['email_message']
-            sender = current_app.config['AWS_SES_SENDER']
-            
-            success_count = 0
-            error_count = 0
-            
-            for report in reports:
-                if not report.student.contact_email:
-                    continue
+    try:
+        # Verify the period exists and belongs to user's tennis club
+        period = TeachingPeriod.query.filter_by(
+            id=period_id,
+            tennis_club_id=current_user.tennis_club_id
+        ).first_or_404()
+        
+        if request.method == 'POST':
+            print("Processing POST request")
+            try:
+                data = request.get_json()
+                print("Received data:", data)
                 
-                try:
-                    # Generate PDF
-                    pdf_buffer = BytesIO()
-                    create_single_report_pdf(report, pdf_buffer)
-                    pdf_buffer.seek(0)
-                    
-                    # Create raw email message
-                    response = ses_client.send_raw_email(
-                        Source=sender,
-                        Destinations=[report.student.contact_email],
-                        RawMessage={
-                            'Data': create_multipart_email(
-                                sender=sender,
-                                recipient=report.student.contact_email,
-                                subject=subject,
-                                body=message,
-                                attachment=pdf_buffer,
-                                filename=f"{report.student.name}_tennis_report.pdf"
-                            )
-                        }
-                    )
-                    success_count += 1
-                    
-                except ClientError as e:
-                    print(f"Error sending email to {report.student.name}: {str(e)}")
-                    error_count += 1
-            
-            flash(f'Successfully sent {success_count} reports. {error_count} failed.', 
-                  'success' if error_count == 0 else 'warning')
-            return redirect(url_for('main.dashboard', period=period_id))
-            
-        except Exception as e:
-            flash(f'Error sending reports: {str(e)}', 'error')
-            return redirect(url_for('main.dashboard', period=period_id))
-    
-    return render_template('pages/send_reports.html',
-                         period=period,
-                         total_reports=len(reports),
-                         students_with_email=len(students_with_emails),
-                         students_missing_email=len(students_missing_emails),
-                         missing_emails=students_missing_emails)
+                if not data:
+                    return jsonify({'error': 'No data received'}), 400
 
-def create_multipart_email(sender, recipient, subject, body, attachment, filename):
-    """Helper function to create multipart email with attachment"""
-    from email.mime.multipart import MIMEMultipart
-    from email.mime.text import MIMEText
-    from email.mime.application import MIMEApplication
-    
-    msg = MIMEMultipart()
-    msg['Subject'] = subject
-    msg['From'] = sender
-    msg['To'] = recipient
-    
-    msg.attach(MIMEText(body))
-    
-    part = MIMEApplication(attachment.read())
-    part.add_header('Content-Disposition', 'attachment', filename=filename)
-    msg.attach(part)
-    
-    return msg.as_string()
+                email_subject = data.get('email_subject')
+                email_message = data.get('email_message')
+                
+                if not email_subject or not email_message:
+                    return jsonify({
+                        'error': 'Email subject and message are required'
+                    }), 400
+
+                # Get reports for this period using proper joins
+                reports = (Report.query
+                    .join(Student)
+                    .join(ProgrammePlayers)
+                    .filter(
+                        Report.teaching_period_id == period_id,
+                        ProgrammePlayers.tennis_club_id == current_user.tennis_club_id,
+                        Student.contact_email.isnot(None)  # Only get reports where student has email
+                    ).all())
+                
+                print(f"Found {len(reports)} reports to process")
+                
+                if not reports:
+                    return jsonify({
+                        'error': 'No reports found with valid email addresses'
+                    }), 404
+                
+                # Use the EmailService with proper error handling
+                try:
+                    email_service = EmailService()
+                    success_count, error_count, errors = email_service.send_reports_batch(
+                        reports=reports,
+                        subject=email_subject,
+                        message=email_message
+                    )
+                    
+                    return jsonify({
+                        'success_count': success_count,
+                        'error_count': error_count,
+                        'errors': errors if errors else None
+                    })
+                    
+                except Exception as email_error:
+                    print(f"Email service error: {str(email_error)}")
+                    return jsonify({
+                        'error': f'Error sending emails: {str(email_error)}'
+                    }), 500
+                    
+            except Exception as e:
+                print(f"Error processing POST request: {str(e)}")
+                print(traceback.format_exc())
+                return jsonify({
+                    'error': f'Server error while sending reports: {str(e)}'
+                }), 500
+        
+        # GET request handling
+        reports = (Report.query
+            .join(Student)
+            .join(ProgrammePlayers)
+            .filter(
+                Report.teaching_period_id == period_id,
+                ProgrammePlayers.tennis_club_id == current_user.tennis_club_id
+            ).all())
+        
+        return jsonify({
+            'total_reports': len(reports),
+            'reports_with_email': len([r for r in reports if r.student.contact_email])
+        })
+        
+    except Exception as e:
+        print(f"Error in send_reports: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({
+            'error': f'Server error: {str(e)}'
+        }), 500

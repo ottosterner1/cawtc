@@ -1,31 +1,37 @@
+# app/__init__.py
 from flask import Flask
-from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager
-from flask_migrate import Migrate
 from config import Config
 import os
+from app.extensions import db, migrate, login_manager, cors
 from app.auth import init_oauth
-from flask_cors import CORS
 
-
-# Initialize extensions
-db = SQLAlchemy()
-migrate = Migrate()
-login_manager = LoginManager()
-
-def register_extensions(app): 
+def register_extensions(app):
     """Register Flask extensions."""
     db.init_app(app)
-    migrate.init_app(app, db)  # Add Flask-Migrate
+    migrate.init_app(app, db)
     login_manager.init_app(app)
     init_oauth(app)
+    
+    # Configure CORS
+    cors.init_app(app, resources={
+        r"/api/*": {
+            "origins": [
+                "http://localhost:5173",  # Vite dev server
+                "http://localhost:8000"   # Flask dev server
+            ],
+            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Authorization"],
+            "supports_credentials": True
+        }
+    })
 
 def register_blueprints(app):
+    """Register Flask blueprints."""
     from app.routes import main
     from app.clubs.routes import club_management
     
     app.register_blueprint(main)
-    app.register_blueprint(club_management, url_prefix='/clubs') 
+    app.register_blueprint(club_management, url_prefix='/clubs')
 
 def configure_login_manager(app):
     """Configure the Flask-Login extension."""
@@ -38,23 +44,9 @@ def configure_login_manager(app):
         from app.models import User
         return User.query.get(int(user_id))
 
-
 def create_app(config_class=Config):
     """Application factory function."""
     app = Flask(__name__)
-    
-    # Configure CORS
-    CORS(app, resources={
-        r"/api/*": {
-            "origins": [
-                "http://localhost:5173",  # Vite dev server
-                "http://localhost:8000"   # Flask dev server
-            ],
-            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-            "allow_headers": ["Content-Type", "Authorization"],
-            "supports_credentials": True
-        }
-    })
     
     # Configure the app
     app.config.from_object(config_class)

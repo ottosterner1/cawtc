@@ -1,10 +1,31 @@
-// src/types/dashboard.ts
+// types/dashboard.ts
+
+export interface BulkEmailSenderProps {
+  periodId: number;
+  onClose: () => void;
+}
+
+export interface User {
+  id: number;
+  name: string;
+  is_admin: boolean;
+  is_super_admin: boolean;
+}
+
 export interface TeachingPeriod {
   id: number;
   name: string;
 }
 
-export interface GroupSummary {
+export interface DashboardMetrics {
+  totalStudents: number;
+  totalReports: number;
+  reportCompletion: number;
+  currentGroups: GroupProgress[];
+  coachSummaries?: CoachSummary[];
+}
+
+export interface GroupProgress {
   name: string;
   count: number;
   reports_completed: number;
@@ -17,14 +38,6 @@ export interface CoachSummary {
   reports_completed: number;
 }
 
-export interface DashboardMetrics {
-  totalStudents: number;
-  totalReports: number;
-  reportCompletion: number;
-  currentGroups: GroupSummary[];
-  coachSummaries?: CoachSummary[];
-}
-
 export interface ProgrammePlayer {
   id: number;
   student_name: string;
@@ -32,11 +45,4 @@ export interface ProgrammePlayer {
   report_submitted: boolean;
   report_id?: number;
   can_edit: boolean;
-}
-
-export interface User {
-  id: number;
-  name: string;
-  is_admin: boolean;
-  is_super_admin: boolean;
 }

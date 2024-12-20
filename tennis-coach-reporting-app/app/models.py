@@ -1,11 +1,14 @@
 from flask_login import UserMixin
 from app import db
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from enum import Enum
 from sqlalchemy import Index, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.types import Enum as PGEnum
 import pytz
+import secrets
+from flask_login import UserMixin
+from app.extensions import db
 
 uk_timezone = pytz.timezone('Europe/London')
 
@@ -138,6 +141,12 @@ class Report(db.Model):
     date = db.Column(db.DateTime(timezone=True), server_default=text('CURRENT_TIMESTAMP'))
     created_at = db.Column(db.DateTime(timezone=True), server_default=text('CURRENT_TIMESTAMP'))
 
+    # Email tracking fields
+    email_sent = db.Column(db.Boolean, default=False)
+    email_sent_at = db.Column(db.DateTime(timezone=True))
+    last_email_status = db.Column(db.String(50))  # Success/Failure/Error message
+    email_attempts = db.Column(db.Integer, default=0)
+
     # Report fields
     forehand = db.Column(db.String(20))
     backhand = db.Column(db.String(20))
@@ -152,6 +161,27 @@ class Report(db.Model):
     tennis_group = db.relationship('TennisGroup', back_populates='reports')
     teaching_period = db.relationship('TeachingPeriod', back_populates='reports')
     programme_player = db.relationship('ProgrammePlayers', back_populates='reports')
+
+    def mark_as_sent(self, status='Success'):
+        """Mark the report as sent via email"""
+        self.email_sent = True
+        self.email_sent_at = datetime.now(timezone.utc)
+        self.last_email_status = status
+        self.email_attempts += 1
+
+    def is_student_under_18(self):
+        """Check if the student is under 18"""
+        if not self.student.date_of_birth:
+            return True  # Default to safest option if no birth date
+        
+        today = datetime.now(timezone.utc).date()
+        age = today.year - self.student.date_of_birth.year
+        # Adjust age if birthday hasn't occurred this year
+        if today.month < self.student.date_of_birth.month or \
+           (today.month == self.student.date_of_birth.month and 
+            today.day < self.student.date_of_birth.day):
+            age -= 1
+        return age < 18
 
 class CoachQualification(Enum):
     LEVEL_1 = 'Level 1'
@@ -236,3 +266,43 @@ class CoachDetails(db.Model):
             return ('warning', days_until_expiry)
         else:
             return ('valid', days_until_expiry)
+        
+class CoachInvitation(db.Model):
+    __tablename__ = 'coach_invitation'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(120), nullable=False)
+    token = db.Column(db.String(100), unique=True, nullable=False)
+    tennis_club_id = db.Column(db.Integer, db.ForeignKey('tennis_club.id'), nullable=False)
+    invited_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=text('CURRENT_TIMESTAMP'))
+    expires_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    used = db.Column(db.Boolean, default=False)
+
+    # Relationships
+    tennis_club = db.relationship('TennisClub', backref='coach_invitations')
+    invited_by = db.relationship('User', backref='sent_invitations')
+
+    @staticmethod
+    def create_invitation(email, tennis_club_id, invited_by_id, expiry_hours=48):
+        token = secrets.token_urlsafe(32)
+        # Create timezone-aware datetime objects
+        now = datetime.now(timezone.utc)
+        expires_at = now + timedelta(hours=expiry_hours)
+        
+        invitation = CoachInvitation(
+            email=email,
+            token=token,
+            tennis_club_id=tennis_club_id,
+            invited_by_id=invited_by_id,
+            expires_at=expires_at
+        )
+        
+        return invitation
+
+    @property
+    def is_expired(self):
+        # Ensure both datetimes are timezone-aware for comparison
+        now = datetime.now(timezone.utc)
+        expires_at = self.expires_at.replace(tzinfo=timezone.utc) if self.expires_at.tzinfo is None else self.expires_at
+        return now > expires_at

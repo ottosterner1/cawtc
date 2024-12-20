@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { DashboardStats } from './DashboardStats';
+import { BulkEmailSender } from '../email/BulkEmailSender';
 import { 
   TeachingPeriod, 
   DashboardMetrics, 
@@ -15,6 +16,7 @@ const Dashboard = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showBulkEmail, setShowBulkEmail] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -22,28 +24,19 @@ const Dashboard = () => {
         setLoading(true);
         setError(null);
 
-        // Fetch user data first
         const userResponse = await fetch('/api/current-user');
-        if (!userResponse.ok) {
-          throw new Error('Failed to fetch user data');
-        }
+        if (!userResponse.ok) throw new Error('Failed to fetch user data');
         const userData = await userResponse.json();
         setCurrentUser(userData);
 
-        // Fetch dashboard stats
         const statsResponse = await fetch(`/api/dashboard/stats${selectedPeriod ? `?period=${selectedPeriod}` : ''}`);
-        if (!statsResponse.ok) {
-          throw new Error('Failed to fetch dashboard stats');
-        }
+        if (!statsResponse.ok) throw new Error('Failed to fetch dashboard stats');
         const statsData = await statsResponse.json();
         setPeriods(statsData.periods);
         setStats(statsData.stats);
 
-        // Fetch programme players
         const playersResponse = await fetch(`/api/programme-players${selectedPeriod ? `?period=${selectedPeriod}` : ''}`);
-        if (!playersResponse.ok) {
-          throw new Error('Failed to fetch programme players');
-        }
+        if (!playersResponse.ok) throw new Error('Failed to fetch programme players');
         const playersData = await playersResponse.json();
         setPlayers(playersData);
 
@@ -58,38 +51,69 @@ const Dashboard = () => {
     fetchData();
   }, [selectedPeriod]);
 
-  if (loading) {
-    return <div>Loading...</div>;
-  }
+  const handleSendReportsClick = () => {
+    if (!selectedPeriod) {
+      alert('Please select a teaching period before sending reports');
+      return;
+    }
+    if (!stats?.totalReports) {
+      alert('There are no reports available to send');
+      return;
+    }
+    setShowBulkEmail(true);
+  };
 
-  if (error) {
-    return <div className="text-red-600">Error: {error}</div>;
-  }
-
-  if (!stats || !currentUser) {
-    return <div>No data available</div>;
-  }
+  if (loading) return <div>Loading...</div>;
+  if (error) return <div className="text-red-600">Error: {error}</div>;
+  if (!stats || !currentUser) return <div>No data available</div>;
 
   return (
     <div className="w-full space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold text-gray-900">Tennis Reports Dashboard</h1>
-        <select
-          className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-          value={selectedPeriod || ''}
-          onChange={(e) => setSelectedPeriod(e.target.value ? Number(e.target.value) : null)}
-        >
-          <option value="">All Periods</option>
-          {periods.map((period) => (
-            <option key={period.id} value={period.id}>{period.name}</option>
-          ))}
-        </select>
+        <div className="flex items-center gap-4">
+          <select
+            className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+            value={selectedPeriod || ''}
+            onChange={(e) => setSelectedPeriod(e.target.value ? Number(e.target.value) : null)}
+          >
+            <option value="">Select Period</option>
+            {periods.map((period) => (
+              <option key={period.id} value={period.id}>{period.name}</option>
+            ))}
+          </select>
+
+          {(currentUser?.is_admin || currentUser?.is_super_admin) && (
+            <>
+              <button
+                onClick={handleSendReportsClick}
+                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={!selectedPeriod || !stats?.totalReports}
+              >
+                Send Reports
+                {stats?.totalReports > 0 && (
+                  <span className="bg-green-500 px-2 py-0.5 rounded-full text-sm">
+                    {stats.totalReports}
+                  </span>
+                )}
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       <DashboardStats stats={stats} />
 
-      {/* Admin Analytics Section - Only shown to admins */}
+      {/* Modal for Bulk Email - Only show if we have a selected period */}
+      {showBulkEmail && selectedPeriod && (
+        <BulkEmailSender
+          periodId={selectedPeriod}
+          onClose={() => setShowBulkEmail(false)}
+        />
+      )}
+
+      {/* Admin Analytics Section */}
       {(currentUser.is_admin || currentUser.is_super_admin) && stats.coachSummaries && (
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-lg font-medium text-gray-900 mb-4">Club Analytics</h2>

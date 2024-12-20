@@ -68,6 +68,15 @@ class Config:
     ]
     CORS_SUPPORTS_CREDENTIALS = True
 
+    # AWS SES Configuration
+    AWS_SES_REGION = os.environ.get('AWS_SES_REGION', 'eu-west-2')
+    AWS_SES_ACCESS_KEY = os.environ.get('AWS_SES_ACCESS_KEY')
+    AWS_SES_SECRET_KEY = os.environ.get('AWS_SES_SECRET_KEY')
+    AWS_SES_SENDER = os.environ.get('AWS_SES_SENDER')
+    
+    # Club invitation configuration
+    INVITATION_EXPIRY_HOURS = 48 
+
 class DevelopmentConfig(Config):
     DEBUG = True
     # Allow CORS in development
