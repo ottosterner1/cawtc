@@ -309,7 +309,6 @@ def serialize_coach(coach):
 def dashboard():
     return render_template('pages/dashboard.html')
 
-# Current user endpoint
 @main.route('/api/current-user')
 @login_required
 @verify_club_access()
@@ -317,6 +316,10 @@ def current_user_info():
     return jsonify({
         'id': current_user.id,
         'name': current_user.name,
+        'tennis_club': {
+            'id': current_user.tennis_club_id,
+            'name': current_user.tennis_club.name if current_user.tennis_club else None
+        },
         'is_admin': current_user.is_admin,
         'is_super_admin': current_user.is_super_admin
     })
