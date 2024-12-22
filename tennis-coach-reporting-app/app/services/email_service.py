@@ -9,6 +9,7 @@ from email.mime.application import MIMEApplication
 from app.utils.report_generator import create_single_report_pdf
 from io import BytesIO
 import traceback
+from jinja2 import Template
 
 class EmailService:
     def __init__(self):
@@ -43,7 +44,44 @@ class EmailService:
 
         return msg.as_string()
 
-    def send_reports_batch(self, reports, subject, message):
+    def _render_template(self, template_str: str, context: dict) -> str:
+        """Render a template string using Jinja2"""
+        if not template_str:
+            return ""
+        template = Template(template_str)
+        return template.render(**context)
+
+    def _prepare_email_content(self, report):
+        """Prepare email subject and body using report template"""
+        template = report.template
+        
+        # Default templates if none specified
+        default_subject = f"Tennis Report for {report.student.name}"
+        default_body = f"""Dear Parent,
+
+Please find attached the tennis report for {report.student.name}.
+
+Best regards,
+{report.coach.name}
+{report.programme_player.tennis_club.name}"""
+
+        # Create context with all available data
+        context = {
+            'student_name': report.student.name,
+            'group_name': report.tennis_group.name,
+            'coach_name': report.coach.name,
+            'tennis_club': report.programme_player.tennis_club.name,
+            'date': report.date.strftime('%B %d, %Y'),
+            'content': report.content  # The structured JSON content
+        }
+
+        # Render subject and body
+        subject = self._render_template(template.email_subject_template, context) if template.email_subject_template else default_subject
+        body = self._render_template(template.email_body_template, context) if template.email_body_template else default_body
+
+        return subject, body
+
+    def send_reports_batch(self, reports, subject=None, message=None):
         """Send batch of reports with PDF attachments"""
         success_count = 0
         error_count = 0
@@ -62,11 +100,17 @@ class EmailService:
                 pdf_buffer.seek(0)
                 pdf_data = pdf_buffer.getvalue()
 
+                # Get email content from template if not provided
+                email_subject, email_body = (
+                    (subject, message) if subject and message
+                    else self._prepare_email_content(report)
+                )
+
                 # Create raw email with attachment
                 raw_email = self._create_raw_email_with_attachment(
                     recipient=report.student.contact_email,
-                    subject=subject,
-                    message=message,
+                    subject=email_subject,
+                    message=email_body,
                     pdf_data=pdf_data,
                     student_name=report.student.name
                 )
@@ -79,8 +123,7 @@ class EmailService:
 
                 # Update report status
                 if hasattr(report, 'email_sent'):
-                    report.email_sent = True
-                    report.email_sent_at = datetime.now(timezone.utc)
+                    report.mark_as_sent('Success')
 
                 success_count += 1
                 
@@ -90,6 +133,8 @@ class EmailService:
                 errors.append(error_msg)
                 logging.error(error_msg)
                 logging.error(traceback.format_exc())
+                if hasattr(report, 'email_sent'):
+                    report.mark_as_sent(f'Error: {str(e)}')
                 
             except Exception as e:
                 error_count += 1
@@ -97,23 +142,7 @@ class EmailService:
                 errors.append(error_msg)
                 logging.error(error_msg)
                 logging.error(traceback.format_exc())
+                if hasattr(report, 'email_sent'):
+                    report.mark_as_sent(f'Error: {str(e)}')
 
         return success_count, error_count, errors
-    
-    def send_accreditation_reminder(self, email, coach_name, expiring_accreditations):
-        subject = "LTA Accreditation Reminder"
-        
-        # Create the message body
-        message = f"Dear {coach_name},\n\n"
-        message += "This is a reminder about your upcoming accreditation expiries:\n\n"
-        
-        for accred_type, days in expiring_accreditations:
-            if days < 0:
-                message += f"- Your {accred_type} expired {abs(days)} days ago\n"
-            else:
-                message += f"- Your {accred_type} will expire in {days} days\n"
-        
-        message += "\nPlease ensure you renew these accreditations before they expire."
-        
-        # Send the email using your existing email sending mechanism
-        self.send_email(email, subject, message)

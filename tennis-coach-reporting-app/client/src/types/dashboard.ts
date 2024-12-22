@@ -46,3 +46,57 @@ export interface ProgrammePlayer {
   report_id?: number;
   can_edit: boolean;
 }
+
+// New interfaces for templates
+export interface TemplateField {
+  id?: number;
+  name: string;
+  description?: string;
+  fieldType: 'text' | 'number' | 'select' | 'textarea' | 'rating';
+  isRequired: boolean;
+  order: number;
+  options?: {
+    options?: string[];
+    min?: number;
+    max?: number;
+  };
+}
+
+export interface TemplateSection {
+  id?: number;
+  name: string;
+  order: number;
+  fields: TemplateField[];
+}
+
+export interface ReportTemplate {
+  id?: number;
+  name: string;
+  description?: string;
+  sections: TemplateSection[];
+  isActive: boolean;
+  emailSubjectTemplate?: string;
+  emailBodyTemplate?: string;
+}
+
+export interface GroupTemplate {
+  groupId: number;
+  templateId: number;
+  groupName: string;
+  templateName: string;
+  isActive: boolean;
+}
+
+export interface ReportContent {
+  [sectionName: string]: {
+    [fieldName: string]: string | number;
+  };
+}
+
+export enum FieldType {
+  TEXT = 'text',
+  NUMBER = 'number',
+  SELECT = 'select',
+  TEXTAREA = 'textarea',
+  RATING = 'rating'
+}

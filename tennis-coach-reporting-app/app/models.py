@@ -10,12 +10,35 @@ import secrets
 from flask_login import UserMixin
 from app.extensions import db
 
+
 uk_timezone = pytz.timezone('Europe/London')
 
 class UserRole(Enum):
     COACH = 'coach'
     ADMIN = 'admin'
     SUPER_ADMIN = 'super_admin'
+
+class FieldType(Enum):
+    TEXT = 'text'
+    NUMBER = 'number'
+    SELECT = 'select'
+    TEXTAREA = 'textarea'
+    RATING = 'rating'
+
+class CoachQualification(Enum):
+    LEVEL_1 = 'Level 1'
+    LEVEL_2 = 'Level 2'
+    LEVEL_3 = 'Level 3'
+    LEVEL_4 = 'Level 4'
+    LEVEL_5 = 'Level 5'
+    NONE = 'None'
+
+class CoachRole(Enum):
+    HEAD_COACH = 'Head Coach'
+    SENIOR_COACH = 'Senior Coach'
+    LEAD_COACH = 'Lead Coach'
+    ASSISTANT_COACH = 'Assistant Coach'
+    JUNIOR_COACH = 'Junior Coach'
 
 class TennisClub(db.Model):
     __tablename__ = 'tennis_club'
@@ -78,6 +101,8 @@ class TennisGroup(db.Model):
     tennis_club = db.relationship('TennisClub', back_populates='groups')
     reports = db.relationship('Report', back_populates='tennis_group', lazy='dynamic')
     programme_players = db.relationship('ProgrammePlayers', back_populates='tennis_group', lazy='dynamic')
+    template_associations = db.relationship('GroupTemplate', back_populates='group', cascade='all, delete-orphan')
+    templates = db.relationship('ReportTemplate', secondary='group_template', back_populates='groups')
 
 class TeachingPeriod(db.Model):
     __tablename__ = 'teaching_period'
@@ -138,22 +163,16 @@ class Report(db.Model):
     group_id = db.Column(db.Integer, db.ForeignKey('tennis_group.id'), nullable=False)
     teaching_period_id = db.Column(db.Integer, db.ForeignKey('teaching_period.id'), nullable=False)
     programme_player_id = db.Column(db.Integer, db.ForeignKey('programme_players.id'), nullable=False)
+    template_id = db.Column(db.Integer, db.ForeignKey('report_template.id'), nullable=False)
+    content = db.Column(JSONB, nullable=False)  # Structured report data
     date = db.Column(db.DateTime(timezone=True), server_default=text('CURRENT_TIMESTAMP'))
     created_at = db.Column(db.DateTime(timezone=True), server_default=text('CURRENT_TIMESTAMP'))
 
     # Email tracking fields
     email_sent = db.Column(db.Boolean, default=False)
     email_sent_at = db.Column(db.DateTime(timezone=True))
-    last_email_status = db.Column(db.String(50))  # Success/Failure/Error message
+    last_email_status = db.Column(db.String(50))
     email_attempts = db.Column(db.Integer, default=0)
-
-    # Report fields
-    forehand = db.Column(db.String(20))
-    backhand = db.Column(db.String(20))
-    movement = db.Column(db.String(20))
-    overall_rating = db.Column(db.Integer)
-    next_group_recommendation = db.Column(db.String(50))
-    notes = db.Column(db.Text)
 
     # Relationships
     student = db.relationship('Student', back_populates='reports')
@@ -161,9 +180,9 @@ class Report(db.Model):
     tennis_group = db.relationship('TennisGroup', back_populates='reports')
     teaching_period = db.relationship('TeachingPeriod', back_populates='reports')
     programme_player = db.relationship('ProgrammePlayers', back_populates='reports')
+    template = db.relationship('ReportTemplate', back_populates='reports')
 
     def mark_as_sent(self, status='Success'):
-        """Mark the report as sent via email"""
         self.email_sent = True
         self.email_sent_at = datetime.now(timezone.utc)
         self.last_email_status = status
@@ -183,20 +202,7 @@ class Report(db.Model):
             age -= 1
         return age < 18
 
-class CoachQualification(Enum):
-    LEVEL_1 = 'Level 1'
-    LEVEL_2 = 'Level 2'
-    LEVEL_3 = 'Level 3'
-    LEVEL_4 = 'Level 4'
-    LEVEL_5 = 'Level 5'
-    NONE = 'None'
 
-class CoachRole(Enum):
-    HEAD_COACH = 'Head Coach'
-    SENIOR_COACH = 'Senior Coach'
-    LEAD_COACH = 'Lead Coach'
-    ASSISTANT_COACH = 'Assistant Coach'
-    JUNIOR_COACH = 'Junior Coach'
 
 class CoachDetails(db.Model):
     __tablename__ = 'coach_details'
@@ -306,3 +312,64 @@ class CoachInvitation(db.Model):
         now = datetime.now(timezone.utc)
         expires_at = self.expires_at.replace(tzinfo=timezone.utc) if self.expires_at.tzinfo is None else self.expires_at
         return now > expires_at
+    
+class ReportTemplate(db.Model):
+    __tablename__ = 'report_template'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text)
+    tennis_club_id = db.Column(db.Integer, db.ForeignKey('tennis_club.id'), nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=text('CURRENT_TIMESTAMP'))
+    created_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    email_subject_template = db.Column(db.String(200))
+    email_body_template = db.Column(db.Text)
+    
+    # Relationships
+    tennis_club = db.relationship('TennisClub', backref='report_templates')
+    created_by = db.relationship('User', backref='created_templates')
+    sections = db.relationship('TemplateSection', back_populates='template', cascade='all, delete-orphan')
+    reports = db.relationship('Report', back_populates='template')
+    group_associations = db.relationship('GroupTemplate', back_populates='template', cascade='all, delete-orphan')
+    groups = db.relationship('TennisGroup', secondary='group_template', back_populates='templates')
+
+class TemplateSection(db.Model):
+    __tablename__ = 'template_section'
+
+    id = db.Column(db.Integer, primary_key=True)
+    template_id = db.Column(db.Integer, db.ForeignKey('report_template.id'), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    order = db.Column(db.Integer, nullable=False)
+    
+    # Relationships
+    template = db.relationship('ReportTemplate', back_populates='sections')
+    fields = db.relationship('TemplateField', back_populates='section', cascade='all, delete-orphan')
+
+class TemplateField(db.Model):
+    __tablename__ = 'template_field'
+
+    id = db.Column(db.Integer, primary_key=True)
+    section_id = db.Column(db.Integer, db.ForeignKey('template_section.id'), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text)
+    field_type = db.Column(db.Enum(FieldType), nullable=False)
+    is_required = db.Column(db.Boolean, default=True)
+    order = db.Column(db.Integer, nullable=False)
+    options = db.Column(JSONB)  # For select/rating fields
+    
+    # Relationships
+    section = db.relationship('TemplateSection', back_populates='fields')
+
+class GroupTemplate(db.Model):
+    __tablename__ = 'group_template'
+
+    id = db.Column(db.Integer, primary_key=True)
+    group_id = db.Column(db.Integer, db.ForeignKey('tennis_group.id'), nullable=False)
+    template_id = db.Column(db.Integer, db.ForeignKey('report_template.id'), nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=text('CURRENT_TIMESTAMP'))
+    
+    # Relationships
+    group = db.relationship('TennisGroup', back_populates='template_associations')
+    template = db.relationship('ReportTemplate', back_populates='group_associations')

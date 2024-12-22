@@ -4,7 +4,8 @@ from flask_login import login_user, login_required, logout_user, current_user
 from werkzeug.security import check_password_hash, generate_password_hash
 from app.models import (
     User, TennisGroup, TeachingPeriod, Student, Report, UserRole, 
-    TennisClub, ProgrammePlayers, CoachInvitation, CoachDetails
+    TennisClub, ProgrammePlayers, CoachInvitation, CoachDetails,
+    GroupTemplate, ReportTemplate, TemplateSection, TemplateField, FieldType
 )
 from app import db
 from app.auth import oauth
@@ -733,139 +734,6 @@ def manage_coaches():
     
     return render_template('admin/coaches.html', coaches=coaches)
 
-@main.route('/report/create/<int:player_id>', methods=['GET', 'POST'])
-@login_required
-def create_report(player_id):
-    current_period = request.args.get('period')
-    player = ProgrammePlayers.query.get_or_404(player_id)
-    
-    # Permission check
-    if not (current_user.is_admin or current_user.is_super_admin) and player.coach_id != current_user.id:
-        flash('You do not have permission to create a report for this player', 'error')
-        return redirect(url_for('main.dashboard', period=current_period))
-
-    # Check if report already exists
-    existing_report = Report.query.filter_by(
-        student_id=player.student_id,
-        teaching_period_id=player.teaching_period_id
-    ).first()
-    
-    if existing_report:
-        flash('A report already exists for this student in this teaching period', 'error')
-        return redirect(url_for('main.dashboard', period=current_period))
-    
-    # Get the groups for the current user's tennis club
-    groups = TennisGroup.query.filter_by(
-        tennis_club_id=current_user.tennis_club_id
-    ).order_by(TennisGroup.name).all()
-    
-    if request.method == 'POST':
-        try:
-            # Create new report
-            report = Report(
-                student_id=player.student_id,
-                coach_id=current_user.id,
-                teaching_period_id=player.teaching_period_id,
-                programme_player_id=player.id,
-                group_id=int(request.form['next_group_recommendation']),
-                forehand=request.form['forehand'],
-                backhand=request.form['backhand'],
-                movement=request.form['movement'],
-                overall_rating=int(request.form['overall_rating']),
-                next_group_recommendation=request.form['next_group_recommendation'],
-                notes=request.form['notes'],
-                date=datetime.utcnow()
-            )
-            
-            db.session.add(report)
-            player.report_submitted = True
-            
-            db.session.commit()
-            flash('Report created successfully', 'success')
-            return redirect(url_for('main.dashboard', period=current_period))
-            
-        except Exception as e:
-            db.session.rollback()
-            flash(f'Error creating report: {str(e)}', 'error')
-            return render_template('pages/create_report.html', 
-                               player=player, 
-                               groups=groups,
-                               current_period=current_period)
-    
-    # GET request
-    return render_template('pages/create_report.html', 
-                         player=player, 
-                         groups=groups,
-                         current_period=current_period)
-
-@main.route('/report/<int:report_id>/edit', methods=['GET', 'POST'])
-@login_required
-def edit_report(report_id):
-    # Get the current period from query parameters
-    current_period = request.args.get('period')
-    # Get report with relationships
-    report = Report.query.get_or_404(report_id)
-    
-    if report.coach_id != current_user.id:
-        flash('You do not have permission to edit this report', 'error')
-        return redirect(url_for('main.dashboard'))
-    
-    # Get the groups for the current user's tennis club
-    groups = TennisGroup.query.filter_by(
-        tennis_club_id=current_user.tennis_club_id
-    ).order_by(TennisGroup.name).all()
-    
-    if request.method == 'POST':
-        try:
-            # Validate required fields
-            required_fields = ['forehand', 'backhand', 'movement', 'overall_rating', 
-                             'next_group_recommendation', 'notes']
-            
-            for field in required_fields:
-                if not request.form.get(field):
-                    flash(f'The {field.replace("_", " ")} field is required', 'error')
-                    return render_template('pages/edit_report.html', 
-                                        report=report, 
-                                        groups=groups)
-            
-            # Validate overall rating
-            try:
-                overall_rating = int(request.form['overall_rating'])
-                if not 1 <= overall_rating <= 5:
-                    raise ValueError("Rating must be between 1 and 5")
-            except ValueError as e:
-                flash(f'Invalid overall rating: {str(e)}', 'error')
-                return render_template('pages/edit_report.html', 
-                                    report=report, 
-                                    groups=groups)
-            
-            # Update report fields
-            report.forehand = request.form['forehand']
-            report.backhand = request.form['backhand']
-            report.movement = request.form['movement']
-            report.overall_rating = overall_rating
-            report.next_group_recommendation = request.form['next_group_recommendation']
-            report.notes = request.form['notes']
-            
-            try:
-                db.session.commit()
-                flash('Report updated successfully', 'success')
-                # Redirect back to dashboard with the period parameter
-                return redirect(url_for('main.dashboard', period=current_period))
-            except SQLAlchemyError as e:
-                db.session.rollback()
-                flash(f'Database error: {str(e)}', 'error')
-                
-        except Exception as e:
-            db.session.rollback()
-            flash(f'Error updating report: {str(e)}', 'error')
-            print(f"Error updating report: {str(e)}")
-    
-    return render_template('pages/edit_report.html', 
-                         report=report, 
-                         groups=groups,
-                         current_period=current_period)
-
 @main.route('/report/<int:report_id>/delete', methods=['POST'])
 @login_required
 def delete_report(report_id):
@@ -1162,4 +1030,358 @@ def send_accreditation_reminders():
         'success': True,
         'reminders_sent': sent_count,
         'errors': errors
+    })
+
+@main.route('/api/report-templates', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def manage_templates():
+    if request.method == 'POST':
+        data = request.get_json()
+        try:
+            template = ReportTemplate(
+                name=data['name'],
+                description=data.get('description'),
+                tennis_club_id=current_user.tennis_club_id,
+                created_by_id=current_user.id,
+                email_subject_template=data.get('emailSubjectTemplate'),
+                email_body_template=data.get('emailBodyTemplate')
+            )
+            
+            # Add sections and fields
+            for section_data in data['sections']:
+                section = TemplateSection(
+                    name=section_data['name'],
+                    order=section_data['order']
+                )
+                
+                for field_data in section_data['fields']:
+                    field = TemplateField(
+                        name=field_data['name'],
+                        description=field_data.get('description'),
+                        field_type=FieldType[field_data['fieldType'].upper()],
+                        is_required=field_data['isRequired'],
+                        order=field_data['order'],
+                        options=field_data.get('options')
+                    )
+                    section.fields.append(field)
+                
+                template.sections.append(section)
+            
+            db.session.add(template)
+            db.session.commit()
+            
+            return jsonify({
+                'id': template.id,
+                'message': 'Template created successfully'
+            })
+            
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'error': str(e)}), 400
+    
+    # GET - Return all templates for the tennis club
+    templates = ReportTemplate.query.filter_by(
+        tennis_club_id=current_user.tennis_club_id,
+        is_active=True
+    ).all()
+    
+    return jsonify([{
+        'id': t.id,
+        'name': t.name,
+        'description': t.description,
+        'sections': [{
+            'id': s.id,
+            'name': s.name,
+            'order': s.order,
+            'fields': [{
+                'id': f.id,
+                'name': f.name,
+                'description': f.description,
+                'fieldType': f.field_type.value,
+                'isRequired': f.is_required,
+                'order': f.order,
+                'options': f.options
+            } for f in s.fields]
+        } for s in t.sections]
+    } for t in templates])
+
+@main.route('/api/report-templates/<int:template_id>', methods=['GET', 'PUT', 'DELETE'])
+@login_required
+@admin_required
+def manage_template(template_id):
+    template = ReportTemplate.query.filter_by(
+        id=template_id,
+        tennis_club_id=current_user.tennis_club_id
+    ).first_or_404()
+    
+    if request.method == 'PUT':
+        data = request.get_json()
+        try:
+            template.name = data['name']
+            template.description = data.get('description')
+            template.email_subject_template = data.get('emailSubjectTemplate')
+            template.email_body_template = data.get('emailBodyTemplate')
+            
+            # Update sections and fields
+            template.sections = []  # Remove old sections
+            
+            for section_data in data['sections']:
+                section = TemplateSection(
+                    name=section_data['name'],
+                    order=section_data['order']
+                )
+                
+                for field_data in section_data['fields']:
+                    field = TemplateField(
+                        name=field_data['name'],
+                        description=field_data.get('description'),
+                        field_type=FieldType[field_data['fieldType'].upper()],
+                        is_required=field_data['isRequired'],
+                        order=field_data['order'],
+                        options=field_data.get('options')
+                    )
+                    section.fields.append(field)
+                
+                template.sections.append(section)
+            
+            db.session.commit()
+            return jsonify({'message': 'Template updated successfully'})
+            
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'error': str(e)}), 400
+    
+    elif request.method == 'DELETE':
+        template.is_active = False
+        db.session.commit()
+        return jsonify({'message': 'Template deactivated successfully'})
+    
+    # GET - Return single template
+    return jsonify({
+        'id': template.id,
+        'name': template.name,
+        'description': template.description,
+        'emailSubjectTemplate': template.email_subject_template,
+        'emailBodyTemplate': template.email_body_template,
+        'sections': [{
+            'id': s.id,
+            'name': s.name,
+            'order': s.order,
+            'fields': [{
+                'id': f.id,
+                'name': f.name,
+                'description': f.description,
+                'fieldType': f.field_type.value,
+                'isRequired': f.is_required,
+                'order': f.order,
+                'options': f.options
+            } for f in s.fields]
+        } for s in template.sections]
+    })
+
+@main.route('/api/templates/group-assignments', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def manage_group_templates():
+    if request.method == 'POST':
+        data = request.get_json()
+        group_id = data.get('group_id')
+        template_id = data.get('template_id')
+        
+        # Verify group and template belong to user's tennis club
+        group = TennisGroup.query.filter_by(
+            id=group_id, 
+            tennis_club_id=current_user.tennis_club_id
+        ).first_or_404()
+        
+        template = ReportTemplate.query.filter_by(
+            id=template_id, 
+            tennis_club_id=current_user.tennis_club_id
+        ).first_or_404()
+        
+        # Create or update association
+        assoc = GroupTemplate.query.filter_by(
+            group_id=group_id
+        ).first()
+        
+        if assoc:
+            assoc.template_id = template_id
+            assoc.is_active = True
+        else:
+            assoc = GroupTemplate(group_id=group_id, template_id=template_id)
+            db.session.add(assoc)
+        
+        db.session.commit()
+        
+        return jsonify({'message': 'Template assigned successfully'})
+    
+    # GET - Return all group-template assignments
+    assignments = GroupTemplate.query.join(TennisGroup).filter(
+        TennisGroup.tennis_club_id == current_user.tennis_club_id,
+        GroupTemplate.is_active == True
+    ).all()
+    
+    return jsonify([{
+        'group_id': a.group_id,
+        'template_id': a.template_id,
+        'group_name': a.group.name,
+        'template_name': a.template.name
+    } for a in assignments])
+
+@main.route('/report/create/<int:player_id>', methods=['GET', 'POST'])
+@login_required
+def create_report(player_id):
+    current_period = request.args.get('period')
+    player = ProgrammePlayers.query.get_or_404(player_id)
+    
+    # Permission check
+    if not (current_user.is_admin or current_user.is_super_admin) and player.coach_id != current_user.id:
+        flash('You do not have permission to create a report for this player', 'error')
+        return redirect(url_for('main.dashboard', period=current_period))
+
+    # Get template for the group
+    template = (ReportTemplate.query
+        .join(GroupTemplate)
+        .filter(
+            GroupTemplate.group_id == player.group_id,
+            GroupTemplate.is_active == True,
+            ReportTemplate.is_active == True
+        ).first())
+    
+    if not template:
+        flash('No active template found for this group', 'error')
+        return redirect(url_for('main.dashboard', period=current_period))
+
+    if request.method == 'POST':
+        try:
+            # Create structured report content from template
+            content = {}
+            for section in template.sections:
+                content[section.name] = {}
+                for field in section.fields:
+                    field_key = f'field_{field.id}'
+                    if field.is_required and field_key not in request.form:
+                        raise ValueError(f'{field.name} is required')
+                    content[section.name][field.name] = request.form.get(field_key, '')
+
+            # Create new report
+            report = Report(
+                student_id=player.student_id,
+                coach_id=current_user.id,
+                group_id=player.group_id,
+                teaching_period_id=player.teaching_period_id,
+                programme_player_id=player.id,
+                template_id=template.id,
+                content=content,
+                date=datetime.utcnow()
+            )
+            
+            db.session.add(report)
+            player.report_submitted = True
+            db.session.commit()
+            
+            flash('Report created successfully', 'success')
+            return redirect(url_for('main.dashboard', period=current_period))
+            
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error creating report: {str(e)}', 'error')
+            return render_template('pages/create_report.html',
+                               player=player,
+                               template=template,
+                               current_period=current_period)
+    
+    # GET request
+    return render_template('pages/create_report.html',
+                         player=player,
+                         template=template,
+                         current_period=current_period)
+
+
+@main.route('/report/<int:report_id>/edit', methods=['GET', 'POST'])
+@login_required
+def edit_report(report_id):
+    current_period = request.args.get('period')
+    report = Report.query.get_or_404(report_id)
+    
+    if report.coach_id != current_user.id:
+        flash('You do not have permission to edit this report', 'error')
+        return redirect(url_for('main.dashboard', period=current_period))
+    
+    template = report.template
+    
+    if request.method == 'POST':
+        try:
+            # Update report content
+            content = {}
+            for section in template.sections:
+                content[section.name] = {}
+                for field in section.fields:
+                    field_key = f'field_{field.id}'
+                    if field.is_required and field_key not in request.form:
+                        raise ValueError(f'{field.name} is required')
+                    content[section.name][field.name] = request.form.get(field_key, '')
+            
+            report.content = content
+            db.session.commit()
+            
+            flash('Report updated successfully', 'success')
+            return redirect(url_for('main.dashboard', period=current_period))
+            
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error updating report: {str(e)}', 'error')
+    
+    return render_template('pages/edit_report.html',
+                         report=report,
+                         template=template,
+                         current_period=current_period)
+
+@main.route('/api/reports/template/<int:player_id>', methods=['GET'])
+@login_required
+def get_report_template(player_id):
+    player = ProgrammePlayers.query.get_or_404(player_id)
+    
+    # Permission check
+    if not (current_user.is_admin or current_user.is_super_admin) and player.coach_id != current_user.id:
+        return jsonify({'error': 'Permission denied'}), 403
+
+    # Get template for the group
+    template = (ReportTemplate.query
+        .join(GroupTemplate)
+        .filter(
+            GroupTemplate.group_id == player.group_id,
+            GroupTemplate.is_active == True,
+            ReportTemplate.is_active == True
+        ).first())
+    
+    if not template:
+        return jsonify({'error': 'No template found'}), 404
+
+    return jsonify({
+        'template': {
+            'id': template.id,
+            'name': template.name,
+            'description': template.description,
+            'sections': [{
+                'id': s.id,
+                'name': s.name,
+                'order': s.order,
+                'fields': [{
+                    'id': f.id,
+                    'name': f.name,
+                    'description': f.description,
+                    'fieldType': f.field_type.value,
+                    'isRequired': f.is_required,
+                    'order': f.order,
+                    'options': f.options
+                } for f in s.fields]
+            } for s in template.sections]
+        },
+        'player': {
+            'id': player.id,
+            'studentName': player.student.name,
+            'groupName': player.tennis_group.name
+        }
     })

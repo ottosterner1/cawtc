@@ -32,3 +32,5 @@ export FLASK_ENV=development
 
 flask run --host=localhost --port=3000
 
+flask db migrate -m "Updating report columns"
+
