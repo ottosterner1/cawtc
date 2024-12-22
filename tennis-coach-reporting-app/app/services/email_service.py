@@ -99,3 +99,21 @@ class EmailService:
                 logging.error(traceback.format_exc())
 
         return success_count, error_count, errors
+    
+    def send_accreditation_reminder(self, email, coach_name, expiring_accreditations):
+        subject = "LTA Accreditation Reminder"
+        
+        # Create the message body
+        message = f"Dear {coach_name},\n\n"
+        message += "This is a reminder about your upcoming accreditation expiries:\n\n"
+        
+        for accred_type, days in expiring_accreditations:
+            if days < 0:
+                message += f"- Your {accred_type} expired {abs(days)} days ago\n"
+            else:
+                message += f"- Your {accred_type} will expire in {days} days\n"
+        
+        message += "\nPlease ensure you renew these accreditations before they expire."
+        
+        # Send the email using your existing email sending mechanism
+        self.send_email(email, subject, message)

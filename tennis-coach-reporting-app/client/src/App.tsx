@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import Dashboard from './components/dashboard/Dashboard';
-import NavigationBar from './components/layout/NavigationBar';
 import { User } from './types/user';
 
 const App = () => {
@@ -37,18 +36,9 @@ const App = () => {
     return null;
   }
 
-  // Check if we're in the dashboard page by looking for the react-root element
-  const isDashboardPage = document.getElementById('react-root')?.closest('.w-full');
-
-  // If we're not in the dashboard page, only render the NavigationBar
-  if (!isDashboardPage) {
-    return <NavigationBar currentUser={currentUser} />;
-  }
-
-  // Otherwise render the full dashboard view
+  // Simply render the Dashboard
   return (
-    <div className="w-full flex flex-col">
-      <NavigationBar currentUser={currentUser} />
+    <div className="w-full">
       <Dashboard />
     </div>
   );

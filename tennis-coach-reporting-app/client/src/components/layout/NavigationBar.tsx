@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Settings, ChevronDown, LogOut } from 'lucide-react';
+import { ChevronDown, LogOut } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -66,20 +66,19 @@ const NavigationBar: React.FC<NavigationBarProps> = ({ currentUser }) => {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button className="flex items-center px-3 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 focus:outline-none">
-                    <Settings className="w-4 h-4 mr-2" />
-                    Settings
+                    Manage
                     <ChevronDown className="w-4 h-4 ml-1" />
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel>Club Management</DropdownMenuLabel>
+                  <DropdownMenuLabel>Admin Management</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem>
                     <a 
                       href={`/clubs/manage/${clubId}/club`}
                       className="flex items-center w-full"
                     >
-                      Manage Club
+                      Club
                     </a>
                   </DropdownMenuItem>
                   <DropdownMenuItem>
@@ -87,7 +86,7 @@ const NavigationBar: React.FC<NavigationBarProps> = ({ currentUser }) => {
                       href={`/clubs/manage/${clubId}/teaching-periods`}
                       className="flex items-center w-full"
                     >
-                      Manage Periods
+                      Terms
                     </a>
                   </DropdownMenuItem>
                   <DropdownMenuItem>
@@ -95,7 +94,7 @@ const NavigationBar: React.FC<NavigationBarProps> = ({ currentUser }) => {
                       href={`/clubs/manage/${clubId}/groups`}
                       className="flex items-center w-full"
                     >
-                      Manage Groups
+                      Groups
                     </a>
                   </DropdownMenuItem>
                   <DropdownMenuItem>
@@ -103,7 +102,7 @@ const NavigationBar: React.FC<NavigationBarProps> = ({ currentUser }) => {
                       href={`/clubs/manage/${clubId}/coaches`}
                       className="flex items-center w-full"
                     >
-                      Manage Coaches
+                      Coaches
                     </a>
                   </DropdownMenuItem>
                   {currentUser.is_super_admin && (
@@ -122,13 +121,16 @@ const NavigationBar: React.FC<NavigationBarProps> = ({ currentUser }) => {
 
             {/* User Profile */}
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
+            <DropdownMenuTrigger asChild>
                 <button className="flex items-center">
-                  <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-medium">
-                    {currentUser.name.charAt(0)}
-                  </div>
+                <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-medium">
+                    {currentUser.name.split(' ')
+                    .slice(0, 2) // Take first two parts of the name
+                    .map(part => part.charAt(0)) // Get first letter of each part
+                    .join('')} {/* Join the letters together */}
+                </div>
                 </button>
-              </DropdownMenuTrigger>
+            </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>
                   <div className="flex flex-col">

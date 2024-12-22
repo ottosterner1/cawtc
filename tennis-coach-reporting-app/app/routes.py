@@ -2,13 +2,16 @@ import traceback
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, jsonify
 from flask_login import login_user, login_required, logout_user, current_user
 from werkzeug.security import check_password_hash, generate_password_hash
-from app.models import User, TennisGroup, TeachingPeriod, Student, Report, UserRole, TennisClub, ProgrammePlayers, CoachInvitation
+from app.models import (
+    User, TennisGroup, TeachingPeriod, Student, Report, UserRole, 
+    TennisClub, ProgrammePlayers, CoachInvitation, CoachDetails
+)
 from app import db
 from app.auth import oauth
 from app.clubs.routes import club_management
 import pandas as pd
 from sqlalchemy.orm import joinedload
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from werkzeug.utils import secure_filename
 from flask import session, url_for
 from sqlalchemy.exc import SQLAlchemyError
@@ -24,8 +27,7 @@ from io import BytesIO
 import zipfile
 from app.config.clubs import get_club_from_email, TENNIS_CLUBS
 from flask_cors import CORS, cross_origin
-from sqlalchemy import func
-from sqlalchemy import func, distinct, and_
+from sqlalchemy import func, distinct, and_, or_
 from app.services.email_service import EmailService
 
 main = Blueprint('main', __name__)
@@ -984,3 +986,180 @@ def send_reports(period_id):
         return jsonify({
             'error': f'Server error: {str(e)}'
         }), 500
+    
+# Path: app/routes.py (Add these routes to your existing routes.py)
+
+@main.route('/profile')
+@login_required
+@verify_club_access()
+def profile_page():
+    """Serve the profile page"""
+    return render_template('pages/profile.html')
+
+@main.route('/api/profile')
+@login_required
+@verify_club_access()
+def get_profile():
+    """Get the current user's basic profile information"""
+    try:
+        user_data = {
+            'id': current_user.id,
+            'email': current_user.email,
+            'name': current_user.name,
+            'role': current_user.role.value,
+            'tennis_club': {
+                'id': current_user.tennis_club_id,
+                'name': current_user.tennis_club.name if current_user.tennis_club else None
+            }
+        }
+        
+        # Include coach details if they exist
+        if current_user.coach_details:
+            user_data['coach_details'] = {
+                'contact_number': current_user.coach_details.contact_number,
+                'emergency_contact_name': current_user.coach_details.emergency_contact_name,
+                'emergency_contact_number': current_user.coach_details.emergency_contact_number
+            }
+            
+        return jsonify(user_data)
+        
+    except Exception as e:
+        print(f"Error fetching profile: {str(e)}")
+        return jsonify({'error': 'Failed to fetch profile data'}), 500
+
+@main.route('/api/profile/details', methods=['PUT'])
+@login_required
+@verify_club_access()
+def update_profile_details():
+    """Update the current user's coach details"""
+    try:
+        data = request.get_json()
+        
+        # Get or create coach details
+        coach_details = current_user.coach_details
+        if not coach_details:
+            coach_details = CoachDetails(
+                user_id=current_user.id,
+                tennis_club_id=current_user.tennis_club_id
+            )
+            db.session.add(coach_details)
+        
+        # Update fields
+        coach_details.contact_number = data.get('contact_number')
+        coach_details.emergency_contact_name = data.get('emergency_contact_name')
+        coach_details.emergency_contact_number = data.get('emergency_contact_number')
+        
+        db.session.commit()
+        
+        return jsonify({
+            'contact_number': coach_details.contact_number,
+            'emergency_contact_name': coach_details.emergency_contact_name,
+            'emergency_contact_number': coach_details.emergency_contact_number
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error updating profile: {str(e)}")
+        return jsonify({'error': 'Failed to update profile'}), 500
+
+@main.route('/lta-accreditation')
+@login_required
+@admin_required
+def lta_accreditation():
+    return render_template('pages/lta_accreditation.html')    
+
+@main.route('/api/coaches/accreditations')
+@login_required
+@admin_required
+def get_coach_accreditations():
+    club_id = current_user.tennis_club_id
+    coaches = User.query.filter(
+        and_(
+            User.tennis_club_id == club_id,
+            or_(
+                User.role == UserRole.COACH,
+                User.role == UserRole.ADMIN
+            )
+        )
+    ).all()
+    
+    def get_accreditation_status(expiry_date):
+        if not expiry_date:
+            return {'status': 'expired', 'days_remaining': None}
+            
+        current_time = datetime.now(timezone.utc)
+        if expiry_date.tzinfo != timezone.utc:
+            expiry_date = expiry_date.astimezone(timezone.utc)
+            
+        days_remaining = (expiry_date - current_time).days
+        
+        if days_remaining < 0:
+            return {'status': 'expired', 'days_remaining': days_remaining}
+        elif days_remaining <= 90:
+            return {'status': 'warning', 'days_remaining': days_remaining}
+        else:
+            return {'status': 'valid', 'days_remaining': days_remaining}
+    
+    coach_data = []
+    for coach in coaches:
+        details = coach.coach_details
+        if details:
+            accreditations = {
+                'dbs': get_accreditation_status(details.dbs_expiry),
+                'first_aid': get_accreditation_status(details.first_aid_expiry),
+                'safeguarding': get_accreditation_status(details.safeguarding_expiry),
+                'pediatric_first_aid': get_accreditation_status(details.pediatric_first_aid_expiry),
+                'accreditation': get_accreditation_status(details.accreditation_expiry)
+            }
+            
+            coach_data.append({
+                'id': coach.id,
+                'name': coach.name,
+                'email': coach.email,
+                'accreditations': accreditations
+            })
+    
+    return jsonify(coach_data)
+
+@main.route('/api/coaches/send-reminders', methods=['POST'])
+@login_required
+@admin_required
+def send_accreditation_reminders():
+    club_id = current_user.tennis_club_id
+    coaches = User.query.filter_by(tennis_club_id=club_id, role=UserRole.COACH).all()
+    
+    email_service = EmailService()
+    sent_count = 0
+    errors = []
+    
+    for coach in coaches:
+        if not coach.coach_details:
+            continue
+            
+        expiring_accreditations = []
+        details = coach.coach_details
+        
+        # Check each accreditation
+        if details.dbs_expiry:
+            days = (details.dbs_expiry - datetime.now(timezone.utc)).days
+            if days <= 90:
+                expiring_accreditations.append(('DBS Check', days))
+                
+        # Add similar checks for other accreditations...
+        
+        if expiring_accreditations:
+            try:
+                email_service.send_accreditation_reminder(
+                    coach.email,
+                    coach.name,
+                    expiring_accreditations
+                )
+                sent_count += 1
+            except Exception as e:
+                errors.append(f"Failed to send reminder to {coach.email}: {str(e)}")
+    
+    return jsonify({
+        'success': True,
+        'reminders_sent': sent_count,
+        'errors': errors
+    })

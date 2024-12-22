@@ -18,8 +18,8 @@ export function CardHeader({ children, className = "" }: { children: React.React
   return <div className={`p-6 pb-4 ${className}`}>{children}</div>
 }
 
-export function CardTitle({ children }: { children: React.ReactNode }) {
-  return <h3 className="text-lg font-medium">{children}</h3>
+export function CardTitle({ children, className = "" }: { children: React.ReactNode, className?: string }) {
+  return <h3 className={`text-lg font-medium ${className}`}>{children}</h3>
 }
 
 export function CardContent({ children }: { children: React.ReactNode }) {

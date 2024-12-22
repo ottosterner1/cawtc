@@ -22,6 +22,19 @@ export default defineConfig({
     outDir: '../app/static/dist',
     emptyOutDir: true,
     manifest: true,
+    rollupOptions: {
+      input: {
+        dashboard: path.resolve(__dirname, 'src/entry/dashboard.tsx'),
+        navigation: path.resolve(__dirname, 'src/entry/navigation.tsx'),
+        profile: path.resolve(__dirname, 'src/entry/profile.tsx'),
+        lta_accreditation: path.resolve(__dirname, 'src/entry/lta_accreditation.tsx'), // Add this line
+      },
+      output: {
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash].[ext]'
+      }
+    }
   },
   resolve: {
     alias: {

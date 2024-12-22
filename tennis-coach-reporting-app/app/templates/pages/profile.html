@@ -1,12 +1,13 @@
+{# Path: app/templates/pages/profile.html #}
 {% extends "base.html" %}
 
-{% block content %}
-<div id="react-root" class="w-full">
-    <!-- React app will render here -->
-</div>
-{% endblock %}
+{% block title %}Profile - Tennis Automation{% endblock %}
 
-{% block scripts %}
+{% block content %}
+<div id="root">
+    <!-- React Profile will render here -->
+</div>
+
 {% if config['DEBUG'] %}
     <script type="module">
         import RefreshRuntime from 'http://localhost:5173/@react-refresh'
@@ -16,8 +17,8 @@
         window.__vite_plugin_react_preamble_installed__ = true
     </script>
     <script type="module" src="http://localhost:5173/@vite/client"></script>
-    <script type="module" src="http://localhost:5173/src/main.tsx"></script>
+    <script type="module" src="http://localhost:5173/src/entry/profile.tsx"></script>
 {% else %}
-    <script type="module" src="{{ url_for('static', filename='dist/assets/main-BobEDBep.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='dist/assets/profile-[hash].js') }}"></script>
 {% endif %}
 {% endblock %}

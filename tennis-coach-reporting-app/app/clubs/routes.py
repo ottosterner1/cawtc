@@ -278,31 +278,38 @@ def onboard_coach():
     return render_template('admin/coach_onboarding.html', clubs=clubs)
 
 def parse_date(date_str):
-    """Parse date from DD-MMM-YYYY format (e.g., 05-Nov-2013)"""
+    """Parse date from either YYYY-MM-DD or DD-MMM-YYYY format"""
     print(f"Attempting to parse date: '{date_str}'")
     print(date_str)
+    
     if not date_str or not isinstance(date_str, str):
         raise ValueError(f"Invalid date input: {date_str}")
 
     try:
-        # Clean up the date string and split
-        date_str = date_str.strip()
-        day, month, year = date_str.split('-')
-        
-        # Ensure month is properly capitalized
-        month = month.capitalize()
-        
-        # Reconstruct date string in proper format
-        formatted_date_str = f"{day}-{month}-{year}"
-        
-        # Parse using strptime
-        parsed_date = datetime.strptime(formatted_date_str, '%d-%b-%Y').date()
-        print(f"Successfully parsed date: {parsed_date}")
-        return parsed_date
-        
+        # First try YYYY-MM-DD format (HTML5 date input)
+        try:
+            parsed_date = datetime.strptime(date_str.strip(), '%Y-%m-%d').date()
+            print(f"Successfully parsed date (YYYY-MM-DD): {parsed_date}")
+            return parsed_date
+        except ValueError:
+            # If that fails, try DD-MMM-YYYY format
+            date_str = date_str.strip()
+            day, month, year = date_str.split('-')
+            
+            # Ensure month is properly capitalized
+            month = month.capitalize()
+            
+            # Reconstruct date string in proper format
+            formatted_date_str = f"{day}-{month}-{year}"
+            
+            # Parse using strptime
+            parsed_date = datetime.strptime(formatted_date_str, '%d-%b-%Y').date()
+            print(f"Successfully parsed date (DD-MMM-YYYY): {parsed_date}")
+            return parsed_date
+            
     except ValueError as e:
         print(f"Date parsing failed: {str(e)}")
-        raise ValueError(f"Invalid date format for '{date_str}'. Use DD-MMM-YYYY format (e.g., 05-Nov-2013)")
+        raise ValueError(f"Invalid date format for '{date_str}'. Use either YYYY-MM-DD or DD-MMM-YYYY format (e.g., 2024-12-25 or 25-Dec-2024)")
 
 def bulk_upload_players(club, teaching_period_id, file):
     try:

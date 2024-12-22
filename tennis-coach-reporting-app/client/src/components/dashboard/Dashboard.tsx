@@ -23,23 +23,31 @@ const Dashboard = () => {
       try {
         setLoading(true);
         setError(null);
-
+  
         const userResponse = await fetch('/api/current-user');
         if (!userResponse.ok) throw new Error('Failed to fetch user data');
         const userData = await userResponse.json();
         setCurrentUser(userData);
-
+  
         const statsResponse = await fetch(`/api/dashboard/stats${selectedPeriod ? `?period=${selectedPeriod}` : ''}`);
         if (!statsResponse.ok) throw new Error('Failed to fetch dashboard stats');
         const statsData = await statsResponse.json();
         setPeriods(statsData.periods);
+        
+        // Add this block to select the latest period
+        if (!selectedPeriod && statsData.periods.length > 0) {
+          const latestPeriod = statsData.periods[statsData.periods.length - 1];
+          setSelectedPeriod(latestPeriod.id);
+          return; // Exit early as the useEffect will run again with the new selectedPeriod
+        }
+        
         setStats(statsData.stats);
-
+  
         const playersResponse = await fetch(`/api/programme-players${selectedPeriod ? `?period=${selectedPeriod}` : ''}`);
         if (!playersResponse.ok) throw new Error('Failed to fetch programme players');
         const playersData = await playersResponse.json();
         setPlayers(playersData);
-
+  
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
         setError(error instanceof Error ? error.message : 'An error occurred');
@@ -47,7 +55,7 @@ const Dashboard = () => {
         setLoading(false);
       }
     };
-
+  
     fetchData();
   }, [selectedPeriod]);
 
@@ -126,7 +134,7 @@ const Dashboard = () => {
                   <div key={group.name} className="flex justify-between items-center">
                     <span className="text-gray-600">{group.name}</span>
                     <div className="text-right">
-                      <span className="font-medium">{group.count} students</span>
+                      <span className="font-medium">{group.count} players</span>
                       <div className="text-sm text-gray-500">
                         {((group.reports_completed / group.count) * 100).toFixed(1)}% complete
                       </div>
