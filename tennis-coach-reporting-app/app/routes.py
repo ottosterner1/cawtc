@@ -624,12 +624,28 @@ def home():
         flash("Error loading dashboard data", "error")
         return redirect(url_for('main.index'))
 
-@main.route('/report/<int:report_id>')
+# Add this at the top of routes.py
+@main.route('/debug/reports')
+@login_required
+def debug_reports():
+    reports = Report.query.all()
+    return {
+        'count': len(reports),
+        'reports': [{
+            'id': r.id,
+            'student_id': r.student_id,
+            'coach_id': r.coach_id
+        } for r in reports]
+    }
+
+@main.route('/reports/<int:report_id>')
 @login_required
 @verify_club_access()
 def view_report(report_id):
     """Render the view report page"""
+    print(f"Accessing report {report_id}")
     report = Report.query.get_or_404(report_id)
+    print(f"Report found: {report is not None}")
     
     # Check permissions
     if not (current_user.is_admin or current_user.is_super_admin) and report.coach_id != current_user.id:
@@ -638,12 +654,7 @@ def view_report(report_id):
         
     return render_template('pages/view_report.html', report_id=report_id)
 
-# @main.route('/report/edit/<int:report_id>')
-# @login_required
-# def edit_report_page(report_id):
-#     return render_template('pages/edit_report.html', report_id=report_id)
-
-@main.route('/report/<int:report_id>/edit')
+@main.route('/reports/<int:report_id>/edit')
 @login_required
 @verify_club_access()
 def edit_report_page(report_id):
@@ -830,29 +841,22 @@ def manage_coaches():
     
     return render_template('admin/coaches.html', coaches=coaches)
 
-@main.route('/report/delete/<int:report_id>', methods=['POST'])
+@main.route('/reports/delete/<int:report_id>', methods=['POST'])
 @login_required
+@verify_club_access()
 def delete_report(report_id):
-    current_period = request.args.get('period')
     report = Report.query.get_or_404(report_id)
     
-    if report.coach_id != current_user.id:
-        flash('You do not have permission to delete this report', 'error')
-        return redirect(url_for('main.dashboard', period=current_period))
-    
+    if not (current_user.is_admin or current_user.is_super_admin) and report.coach_id != current_user.id:
+        return jsonify({'error': 'Permission denied'}), 403
+
     try:
-        programme_player = report.programme_player
-        programme_player.report_submitted = False
-        
         db.session.delete(report)
         db.session.commit()
-        flash('Report deleted successfully', 'success')
+        return jsonify({'message': 'Report deleted successfully'})
     except Exception as e:
         db.session.rollback()
-        flash(f'Error deleting report: {str(e)}', 'error')
-        return redirect(url_for('main.edit_report', report_id=report_id, period=current_period))
-    
-    return redirect(url_for('main.dashboard', period=current_period))
+        return jsonify({'error': str(e)}), 500
 
 @main.route('/api/reports/send/<int:period_id>', methods=['GET', 'POST'])
 @login_required

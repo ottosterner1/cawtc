@@ -192,14 +192,14 @@ const Dashboard: React.FC<DashboardProps> = ({
                   {player.report_submitted ? (
                     <>
                       <a 
-                        href={`/report/${player.id}`}
+                        href={`/reports/${player.report_id}`}
                         className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
                       >
                         View
                       </a>
                       {player.can_edit && (
                         <a
-                          href={`/report/${player.id}/edit`}
+                          href={`/reports/${player.report_id}/edit`}
                           className="inline-flex items-center px-3 py-2 border border-blue-300 shadow-sm text-sm font-medium rounded-md text-blue-700 bg-white hover:bg-blue-50"
                         >
                           Edit
@@ -215,7 +215,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                         Create Report
                       </a>
                     )
-                    
                   )}
                 </div>
               </div>

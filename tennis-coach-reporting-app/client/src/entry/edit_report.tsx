@@ -1,4 +1,3 @@
-// src/entry/edit_report.tsx
 import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import DynamicReportForm from '../components/reports/DynamicReportForm';
@@ -9,8 +8,8 @@ const EditReportApp = () => {
   const [template, setTemplate] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
-  // Get report ID from the DOM
   const rootElement = document.getElementById('edit-report-root');
   const reportId = rootElement?.dataset.reportId;
 
@@ -53,11 +52,27 @@ const EditReportApp = () => {
         throw new Error(errorData.error || 'Failed to update report');
       }
       
-      // Redirect to view report page on success
-      window.location.href = `/report/${reportId}`;
+      window.location.href = `/reports/${reportId}`;
     } catch (err) {
       console.error('Error updating report:', err);
       throw err;
+    }
+  };
+
+  const handleDelete = async () => {
+    try {
+      const response = await fetch(`/reports/delete/${reportId}`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete report');
+      }
+
+      window.location.href = '/dashboard';
+    } catch (err) {
+      console.error('Error deleting report:', err);
+      setError('Failed to delete report');
     }
   };
 
@@ -67,16 +82,46 @@ const EditReportApp = () => {
 
   return (
     <div className="p-4">
-      <div className="mb-4">
+      <div className="mb-4 flex justify-between items-center">
         <h1 className="text-2xl font-bold">Edit Report</h1>
+        <button 
+          onClick={() => setShowDeleteDialog(true)}
+          className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600"
+        >
+          Delete Report
+        </button>
       </div>
+
+      {showDeleteDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h2 className="text-lg font-semibold mb-4">Delete Report</h2>
+            <p className="mb-6">Are you sure you want to delete this report? This action cannot be undone.</p>
+            <div className="flex justify-end gap-4">
+              <button
+                onClick={() => setShowDeleteDialog(false)}
+                className="px-4 py-2 border rounded-md hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <DynamicReportForm
         template={template}
         studentName={report.studentName}
         groupName={report.groupName}
         initialData={report.content}
         onSubmit={handleSubmit}
-        onCancel={() => window.location.href = `/report/${reportId}`}
+        onCancel={() => window.location.href = `/reports/${reportId}`}
       />
     </div>
   );
@@ -91,3 +136,5 @@ if (container) {
     </React.StrictMode>
   );
 }
+
+export default EditReportApp;

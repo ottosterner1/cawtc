@@ -50,7 +50,7 @@ const ViewReportApp = () => {
         </button>
         {report.canEdit && (
           <a
-            href={`/report/${reportId}/edit`}
+            href={`/reports/${reportId}/edit`}
             className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
           >
             Edit Report
