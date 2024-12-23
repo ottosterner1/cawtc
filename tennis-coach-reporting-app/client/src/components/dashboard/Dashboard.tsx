@@ -8,7 +8,14 @@ import {
   User 
 } from '../../types/dashboard';
 
-const Dashboard = () => {
+interface DashboardProps {
+  onCreateReport?: (playerId: number) => void;
+  onEditReport?: (reportId: number) => void;
+  onViewReport?: (reportId: number) => void;
+}
+
+const Dashboard: React.FC<DashboardProps> = ({
+}) => {
   const [selectedPeriod, setSelectedPeriod] = useState<number | null>(null);
   const [periods, setPeriods] = useState<TeachingPeriod[]>([]);
   const [stats, setStats] = useState<DashboardMetrics | null>(null);
@@ -34,11 +41,10 @@ const Dashboard = () => {
         const statsData = await statsResponse.json();
         setPeriods(statsData.periods);
         
-        // Add this block to select the latest period
         if (!selectedPeriod && statsData.periods.length > 0) {
           const latestPeriod = statsData.periods[statsData.periods.length - 1];
           setSelectedPeriod(latestPeriod.id);
-          return; // Exit early as the useEffect will run again with the new selectedPeriod
+          return;
         }
         
         setStats(statsData.stats);
@@ -113,7 +119,7 @@ const Dashboard = () => {
 
       <DashboardStats stats={stats} />
 
-      {/* Modal for Bulk Email - Only show if we have a selected period */}
+      {/* Modal for Bulk Email */}
       {showBulkEmail && selectedPeriod && (
         <BulkEmailSender
           periodId={selectedPeriod}
@@ -186,14 +192,14 @@ const Dashboard = () => {
                   {player.report_submitted ? (
                     <>
                       <a 
-                        href={`/report/${player.report_id}`}
+                        href={`/reports/${player.report_id}`}
                         className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
                       >
                         View
                       </a>
                       {player.can_edit && (
-                        <a 
-                          href={`/report/${player.report_id}/edit?period=${selectedPeriod}`}
+                        <a
+                          href={`/reports/${player.report_id}/edit`}
                           className="inline-flex items-center px-3 py-2 border border-blue-300 shadow-sm text-sm font-medium rounded-md text-blue-700 bg-white hover:bg-blue-50"
                         >
                           Edit
@@ -203,7 +209,7 @@ const Dashboard = () => {
                   ) : (
                     player.can_edit && (
                       <a 
-                        href={`/report/create/${player.id}?period=${selectedPeriod}`}
+                        href={`/report/new/${player.id}`}
                         className="inline-flex items-center px-3 py-2 border border-green-300 shadow-sm text-sm font-medium rounded-md text-green-700 bg-white hover:bg-green-50"
                       >
                         Create Report

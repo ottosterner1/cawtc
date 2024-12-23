@@ -1,8 +1,46 @@
-// types/dashboard.ts
+// src/types/dashboard.ts
 
-export interface BulkEmailSenderProps {
-  periodId: number;
-  onClose: () => void;
+export interface Group {
+  id: number;
+  name: string;
+  description?: string;
+}
+
+export interface TemplateField {
+  id?: number;
+  name: string;
+  description?: string;
+  fieldType: 'text' | 'textarea' | 'rating' | 'select' | 'progress';
+  isRequired: boolean;
+  order: number;
+  options?: {
+    min?: number;
+    max?: number;
+    options?: string[];
+  } | null;
+}
+
+export interface TemplateSection {
+  id?: number;
+  name: string;
+  order: number;
+  fields: TemplateField[];
+}
+
+export interface ReportTemplate {
+  id?: number;
+  name: string;
+  description?: string;
+  sections: TemplateSection[];
+  isActive: boolean;
+  assignedGroups: Group[];
+}
+
+export interface GroupTemplate {
+  templateId: number;
+  groupId: number;
+  groupName: string;
+  templateName: string;
 }
 
 export interface User {

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
+
 {% block content %}
-<div id="edit-report-root" 
-     data-report-id="{{ report_id }}"
-     class="w-full">
+<div id="template-manager-root" class="w-full">
+    <!-- React Template Manager will render here -->
 </div>
 {% endblock %}
 
@@ -16,8 +16,8 @@
         window.__vite_plugin_react_preamble_installed__ = true
     </script>
     <script type="module" src="http://localhost:5173/@vite/client"></script>
-    <script type="module" src="http://localhost:5173/src/entry/edit_report.tsx"></script>
+    <script type="module" src="http://localhost:5173/src/entry/template_manager.tsx"></script>
 {% else %}
-    <script type="module" src="{{ url_for('static', filename='dist/assets/edit_report-[hash].js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='dist/assets/template_manager-[hash].js') }}"></script>
 {% endif %}
 {% endblock %}
