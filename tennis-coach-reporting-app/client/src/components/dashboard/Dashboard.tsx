@@ -12,14 +12,9 @@ interface DashboardProps {
   onCreateReport?: (playerId: number) => void;
   onEditReport?: (reportId: number) => void;
   onViewReport?: (reportId: number) => void;
-  onManageTemplates?: () => void;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({
-  onCreateReport,
-  onEditReport,
-  onViewReport,
-  onManageTemplates
 }) => {
   const [selectedPeriod, setSelectedPeriod] = useState<number | null>(null);
   const [periods, setPeriods] = useState<TeachingPeriod[]>([]);
@@ -117,12 +112,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                   </span>
                 )}
               </button>
-              <button
-                onClick={onManageTemplates}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-              >
-                Manage Templates
-              </button>
             </>
           )}
         </div>
@@ -202,30 +191,31 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <div className="space-x-2">
                   {player.report_submitted ? (
                     <>
-                      <button 
-                        onClick={() => onViewReport?.(player.report_id!)}
+                      <a 
+                        href={`/report/${player.id}`}
                         className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
                       >
                         View
-                      </button>
+                      </a>
                       {player.can_edit && (
-                        <button 
-                          onClick={() => onEditReport?.(player.report_id!)}
+                        <a
+                          href={`/report/${player.id}/edit`}
                           className="inline-flex items-center px-3 py-2 border border-blue-300 shadow-sm text-sm font-medium rounded-md text-blue-700 bg-white hover:bg-blue-50"
                         >
                           Edit
-                        </button>
+                        </a>
                       )}
                     </>
                   ) : (
                     player.can_edit && (
-                      <button 
-                        onClick={() => onCreateReport?.(player.id)}
+                      <a 
+                        href={`/report/new/${player.id}`}
                         className="inline-flex items-center px-3 py-2 border border-green-300 shadow-sm text-sm font-medium rounded-md text-green-700 bg-white hover:bg-green-50"
                       >
                         Create Report
-                      </button>
+                      </a>
                     )
+                    
                   )}
                 </div>
               </div>

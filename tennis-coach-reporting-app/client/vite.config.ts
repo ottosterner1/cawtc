@@ -27,7 +27,11 @@ export default defineConfig({
         dashboard: path.resolve(__dirname, 'src/entry/dashboard.tsx'),
         navigation: path.resolve(__dirname, 'src/entry/navigation.tsx'),
         profile: path.resolve(__dirname, 'src/entry/profile.tsx'),
-        lta_accreditation: path.resolve(__dirname, 'src/entry/lta_accreditation.tsx'), // Add this line
+        lta_accreditation: path.resolve(__dirname, 'src/entry/lta_accreditation.tsx'),
+        template_manager: path.resolve(__dirname, 'src/entry/template_manager.tsx'),
+        create_report: path.resolve(__dirname, 'src/entry/create_report.tsx'),
+        view_report: path.resolve(__dirname, 'src/entry/view_report.tsx'),
+        edit_report: path.resolve(__dirname, 'src/entry/edit_report.tsx'),
       },
       output: {
         entryFileNames: 'assets/[name]-[hash].js',

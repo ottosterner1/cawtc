@@ -19,11 +19,30 @@ class UserRole(Enum):
     SUPER_ADMIN = 'super_admin'
 
 class FieldType(Enum):
-    TEXT = 'text'
-    NUMBER = 'number'
-    SELECT = 'select'
-    TEXTAREA = 'textarea'
-    RATING = 'rating'
+    TEXT = 'text'          # Short text input
+    TEXTAREA = 'textarea'  # Long text input
+    RATING = 'rating'      # 1-5 rating scale
+    SELECT = 'select'      # Multiple choice
+    PROGRESS = 'progress'  # Yes/Nearly/Not Yet
+
+    @classmethod
+    def get_default_options(cls, field_type):
+        defaults = {
+            cls.TEXT: None,
+            cls.TEXTAREA: None,
+            cls.RATING: {
+                'min': 1,
+                'max': 5,
+                'options': ['Needs Development', 'Developing', 'Competent', 'Proficient', 'Excellent']
+            },
+            cls.SELECT: {
+                'options': []  # To be filled by user
+            },
+            cls.PROGRESS: {
+                'options': ['Yes', 'Nearly', 'Not Yet']
+            }
+        }
+        return defaults.get(field_type)
 
 class CoachQualification(Enum):
     LEVEL_1 = 'Level 1'
@@ -102,7 +121,7 @@ class TennisGroup(db.Model):
     reports = db.relationship('Report', back_populates='tennis_group', lazy='dynamic')
     programme_players = db.relationship('ProgrammePlayers', back_populates='tennis_group', lazy='dynamic')
     template_associations = db.relationship('GroupTemplate', back_populates='group', cascade='all, delete-orphan')
-    templates = db.relationship('ReportTemplate', secondary='group_template', back_populates='groups')
+    templates = db.relationship('ReportTemplate', secondary='group_template', back_populates='groups', overlaps="template_associations,groups")
 
 class TeachingPeriod(db.Model):
     __tablename__ = 'teaching_period'
@@ -323,16 +342,19 @@ class ReportTemplate(db.Model):
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime(timezone=True), server_default=text('CURRENT_TIMESTAMP'))
     created_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    email_subject_template = db.Column(db.String(200))
-    email_body_template = db.Column(db.Text)
     
     # Relationships
     tennis_club = db.relationship('TennisClub', backref='report_templates')
     created_by = db.relationship('User', backref='created_templates')
     sections = db.relationship('TemplateSection', back_populates='template', cascade='all, delete-orphan')
     reports = db.relationship('Report', back_populates='template')
-    group_associations = db.relationship('GroupTemplate', back_populates='template', cascade='all, delete-orphan')
-    groups = db.relationship('TennisGroup', secondary='group_template', back_populates='templates')
+    group_associations = db.relationship('GroupTemplate', 
+                                      back_populates='template', 
+                                      cascade='all, delete-orphan')
+    groups = db.relationship('TennisGroup', 
+                           secondary='group_template', 
+                           back_populates='templates',
+                           overlaps="group_associations,templates")
 
 class TemplateSection(db.Model):
     __tablename__ = 'template_section'
@@ -371,5 +393,9 @@ class GroupTemplate(db.Model):
     created_at = db.Column(db.DateTime(timezone=True), server_default=text('CURRENT_TIMESTAMP'))
     
     # Relationships
-    group = db.relationship('TennisGroup', back_populates='template_associations')
-    template = db.relationship('ReportTemplate', back_populates='group_associations')
+    group = db.relationship('TennisGroup', 
+                          back_populates='template_associations', 
+                          overlaps="templates,groups")
+    template = db.relationship('ReportTemplate', 
+                             back_populates='group_associations',
+                             overlaps="templates,groups")

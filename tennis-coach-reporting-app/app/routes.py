@@ -626,16 +626,112 @@ def home():
 
 @main.route('/report/<int:report_id>')
 @login_required
+@verify_club_access()
 def view_report(report_id):
-    current_period = request.args.get('period')
+    """Render the view report page"""
     report = Report.query.get_or_404(report_id)
-    if report.coach_id != current_user.id:
-        flash('You do not have permission to view this report')
-        return redirect(url_for('main.dashboard', period=current_period))
     
-    return render_template('pages/report_detail.html', 
-                         report=report,
-                         current_period=current_period)
+    # Check permissions
+    if not (current_user.is_admin or current_user.is_super_admin) and report.coach_id != current_user.id:
+        flash('You do not have permission to view this report', 'error')
+        return redirect(url_for('main.dashboard'))
+        
+    return render_template('pages/view_report.html', report_id=report_id)
+
+# @main.route('/report/edit/<int:report_id>')
+# @login_required
+# def edit_report_page(report_id):
+#     return render_template('pages/edit_report.html', report_id=report_id)
+
+@main.route('/report/<int:report_id>/edit')
+@login_required
+@verify_club_access()
+def edit_report_page(report_id):
+    """Render the edit report page"""
+    report = Report.query.get_or_404(report_id)
+    
+    # Check permissions
+    if not current_user.is_admin and report.coach_id != current_user.id:
+        flash('You do not have permission to edit this report', 'error')
+        return redirect(url_for('main.dashboard'))
+        
+    return render_template('pages/edit_report.html', report_id=report_id)
+
+@main.route('/api/reports/<int:report_id>', methods=['GET', 'PUT'])
+@login_required
+@verify_club_access()
+def report_operations(report_id):
+    """API endpoint for getting and updating reports"""
+    report = Report.query.get_or_404(report_id)
+    
+    # Check permissions
+    if not current_user.is_admin and report.coach_id != current_user.id:
+        return jsonify({'error': 'Permission denied'}), 403
+
+    if request.method == 'GET':
+        # Get the template associated with this report
+        template = report.template
+
+        # Serialize the report data
+        report_data = {
+            'id': report.id,
+            'studentName': report.student.name,
+            'groupName': report.tennis_group.name,
+            'submissionDate': report.date.isoformat() if report.date else None,
+            'content': report.content,
+            'canEdit': current_user.is_admin or report.coach_id == current_user.id
+        }
+
+        # Serialize the template data
+        template_data = {
+            'id': template.id,
+            'name': template.name,
+            'description': template.description,
+            'sections': [{
+                'id': section.id,
+                'name': section.name,
+                'order': section.order,
+                'fields': [{
+                    'id': field.id,
+                    'name': field.name,
+                    'description': field.description,
+                    'fieldType': field.field_type.value,
+                    'isRequired': field.is_required,
+                    'order': field.order,
+                    'options': field.options
+                } for field in section.fields]
+            } for section in template.sections]
+        }
+
+        return jsonify({
+            'report': report_data,
+            'template': template_data
+        })
+
+    elif request.method == 'PUT':
+        try:
+            data = request.get_json()
+            
+            if not data:
+                return jsonify({'error': 'No data provided'}), 400
+
+            # Update report content
+            report.content = data.get('content', {})
+            
+            # Record the update time
+            report.date = datetime.now(timezone.utc)
+            
+            db.session.commit()
+            
+            return jsonify({
+                'message': 'Report updated successfully',
+                'report_id': report.id
+            })
+            
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error updating report: {str(e)}")
+            return jsonify({'error': str(e)}), 500
 
 @main.route('/download_reports')
 @login_required
@@ -734,7 +830,7 @@ def manage_coaches():
     
     return render_template('admin/coaches.html', coaches=coaches)
 
-@main.route('/report/<int:report_id>/delete', methods=['POST'])
+@main.route('/report/delete/<int:report_id>', methods=['POST'])
 @login_required
 def delete_report(report_id):
     current_period = request.args.get('period')
@@ -946,7 +1042,8 @@ def get_coach_accreditations():
             User.tennis_club_id == club_id,
             or_(
                 User.role == UserRole.COACH,
-                User.role == UserRole.ADMIN
+                User.role == UserRole.ADMIN,
+                User.role == UserRole.SUPER_ADMIN
             )
         )
     ).all()
@@ -1044,8 +1141,7 @@ def manage_templates():
                 description=data.get('description'),
                 tennis_club_id=current_user.tennis_club_id,
                 created_by_id=current_user.id,
-                email_subject_template=data.get('emailSubjectTemplate'),
-                email_body_template=data.get('emailBodyTemplate')
+                is_active=True
             )
             
             # Add sections and fields
@@ -1068,6 +1164,15 @@ def manage_templates():
                 
                 template.sections.append(section)
             
+            # Handle group assignments
+            if 'assignedGroups' in data:
+                for group_data in data['assignedGroups']:
+                    group_assoc = GroupTemplate(
+                        group_id=group_data['id'],
+                        is_active=True
+                    )
+                    template.group_associations.append(group_assoc)
+            
             db.session.add(template)
             db.session.commit()
             
@@ -1078,9 +1183,10 @@ def manage_templates():
             
         except Exception as e:
             db.session.rollback()
+            print(f"Error creating template: {str(e)}")
             return jsonify({'error': str(e)}), 400
     
-    # GET - Return all templates for the tennis club
+    # GET - Return all templates with their group assignments
     templates = ReportTemplate.query.filter_by(
         tennis_club_id=current_user.tennis_club_id,
         is_active=True
@@ -1090,6 +1196,10 @@ def manage_templates():
         'id': t.id,
         'name': t.name,
         'description': t.description,
+        'assignedGroups': [{
+            'id': assoc.group.id,
+            'name': assoc.group.name
+        } for assoc in t.group_associations if assoc.is_active],
         'sections': [{
             'id': s.id,
             'name': s.name,
@@ -1120,8 +1230,6 @@ def manage_template(template_id):
         try:
             template.name = data['name']
             template.description = data.get('description')
-            template.email_subject_template = data.get('emailSubjectTemplate')
-            template.email_body_template = data.get('emailBodyTemplate')
             
             # Update sections and fields
             template.sections = []  # Remove old sections
@@ -1145,11 +1253,36 @@ def manage_template(template_id):
                 
                 template.sections.append(section)
             
+            # Update group assignments
+            # First deactivate all existing assignments
+            for assoc in template.group_associations:
+                assoc.is_active = False
+            
+            # Then create new assignments or reactivate existing ones
+            if 'assignedGroups' in data:
+                assigned_group_ids = [g['id'] for g in data['assignedGroups']]
+                for group_id in assigned_group_ids:
+                    existing_assoc = GroupTemplate.query.filter_by(
+                        template_id=template.id,
+                        group_id=group_id
+                    ).first()
+                    
+                    if existing_assoc:
+                        existing_assoc.is_active = True
+                    else:
+                        new_assoc = GroupTemplate(
+                            template_id=template.id,
+                            group_id=group_id,
+                            is_active=True
+                        )
+                        db.session.add(new_assoc)
+            
             db.session.commit()
             return jsonify({'message': 'Template updated successfully'})
             
         except Exception as e:
             db.session.rollback()
+            print(f"Error updating template: {str(e)}")
             return jsonify({'error': str(e)}), 400
     
     elif request.method == 'DELETE':
@@ -1157,13 +1290,15 @@ def manage_template(template_id):
         db.session.commit()
         return jsonify({'message': 'Template deactivated successfully'})
     
-    # GET - Return single template
+    # GET - Return single template with group assignments
     return jsonify({
         'id': template.id,
         'name': template.name,
         'description': template.description,
-        'emailSubjectTemplate': template.email_subject_template,
-        'emailBodyTemplate': template.email_body_template,
+        'assignedGroups': [{
+            'id': assoc.group.id,
+            'name': assoc.group.name
+        } for assoc in template.group_associations if assoc.is_active],
         'sections': [{
             'id': s.id,
             'name': s.name,
@@ -1180,67 +1315,137 @@ def manage_template(template_id):
         } for s in template.sections]
     })
 
-@main.route('/api/templates/group-assignments', methods=['GET', 'POST'])
+@main.route('/api/groups')
+@login_required
+@verify_club_access()
+def get_groups():
+    """Get all tennis groups for the current user's tennis club"""
+    try:
+        groups = TennisGroup.query.filter_by(
+            tennis_club_id=current_user.tennis_club_id
+        ).order_by(TennisGroup.name).all()
+        
+        return jsonify([{
+            'id': group.id,
+            'name': group.name,
+            'description': group.description,
+            # Include the currently assigned template if any exists
+            'currentTemplate': {
+                'id': assoc.template.id,
+                'name': assoc.template.name
+            } if (assoc := group.template_associations and 
+                  group.template_associations[0] if group.template_associations else None) 
+            else None
+        } for group in groups])
+        
+    except Exception as e:
+        print(f"Error fetching groups: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({'error': 'Failed to fetch tennis groups'}), 500
+
+@main.route('/clubs/manage/<int:club_id>/report-templates')
 @login_required
 @admin_required
+def manage_report_templates(club_id):
+    if club_id != current_user.tennis_club_id:
+        flash('Unauthorized access', 'error')
+        return redirect(url_for('main.home'))
+    return render_template('pages/report_templates.html')
+
+@main.route('/api/templates/group-assignments', methods=['GET', 'POST'])
+@login_required
+@verify_club_access()
 def manage_group_templates():
     if request.method == 'POST':
-        data = request.get_json()
-        group_id = data.get('group_id')
-        template_id = data.get('template_id')
-        
-        # Verify group and template belong to user's tennis club
-        group = TennisGroup.query.filter_by(
-            id=group_id, 
-            tennis_club_id=current_user.tennis_club_id
-        ).first_or_404()
-        
-        template = ReportTemplate.query.filter_by(
-            id=template_id, 
-            tennis_club_id=current_user.tennis_club_id
-        ).first_or_404()
-        
-        # Create or update association
-        assoc = GroupTemplate.query.filter_by(
-            group_id=group_id
-        ).first()
-        
-        if assoc:
-            assoc.template_id = template_id
-            assoc.is_active = True
-        else:
-            assoc = GroupTemplate(group_id=group_id, template_id=template_id)
-            db.session.add(assoc)
-        
-        db.session.commit()
-        
-        return jsonify({'message': 'Template assigned successfully'})
+        try:
+            data = request.get_json()
+            template_id = data.get('template_id')
+            group_id = data.get('group_id')
+            
+            if not template_id or not group_id:
+                return jsonify({'error': 'Template ID and Group ID are required'}), 400
+            
+            # Verify group and template belong to user's tennis club
+            group = TennisGroup.query.filter_by(
+                id=group_id, 
+                tennis_club_id=current_user.tennis_club_id
+            ).first_or_404()
+            
+            template = ReportTemplate.query.filter_by(
+                id=template_id, 
+                tennis_club_id=current_user.tennis_club_id
+            ).first_or_404()
+            
+            # Check if association already exists
+            existing_assoc = GroupTemplate.query.filter_by(
+                group_id=group_id
+            ).first()
+            
+            if existing_assoc:
+                # Update existing association
+                existing_assoc.template_id = template_id
+                existing_assoc.is_active = True
+            else:
+                # Create new association
+                new_assoc = GroupTemplate(
+                    group_id=group_id,
+                    template_id=template_id,
+                    is_active=True
+                )
+                db.session.add(new_assoc)
+            
+            db.session.commit()
+            
+            # Return updated assignments
+            assignments = GroupTemplate.query.join(TennisGroup).filter(
+                TennisGroup.tennis_club_id == current_user.tennis_club_id,
+                GroupTemplate.is_active == True
+            ).all()
+            
+            return jsonify({
+                'message': 'Template assigned successfully',
+                'assignments': [{
+                    'group_id': a.group_id,
+                    'template_id': a.template_id,
+                    'group_name': a.group.name,
+                    'template_name': a.template.name
+                } for a in assignments]
+            })
+            
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error assigning template to group: {str(e)}")
+            print(traceback.format_exc())
+            return jsonify({'error': str(e)}), 500
     
     # GET - Return all group-template assignments
-    assignments = GroupTemplate.query.join(TennisGroup).filter(
-        TennisGroup.tennis_club_id == current_user.tennis_club_id,
-        GroupTemplate.is_active == True
-    ).all()
-    
-    return jsonify([{
-        'group_id': a.group_id,
-        'template_id': a.template_id,
-        'group_name': a.group.name,
-        'template_name': a.template.name
-    } for a in assignments])
+    try:
+        assignments = GroupTemplate.query.join(TennisGroup).filter(
+            TennisGroup.tennis_club_id == current_user.tennis_club_id,
+            GroupTemplate.is_active == True
+        ).all()
+        
+        return jsonify([{
+            'group_id': a.group_id,
+            'template_id': a.template_id,
+            'group_name': a.group.name,
+            'template_name': a.template.name
+        } for a in assignments])
+        
+    except Exception as e:
+        print(f"Error fetching group templates: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({'error': str(e)}), 500
 
-@main.route('/report/create/<int:player_id>', methods=['GET', 'POST'])
+@main.route('/report/new/<int:player_id>')
 @login_required
-def create_report(player_id):
-    current_period = request.args.get('period')
+def new_report(player_id):
     player = ProgrammePlayers.query.get_or_404(player_id)
     
-    # Permission check
-    if not (current_user.is_admin or current_user.is_super_admin) and player.coach_id != current_user.id:
+    if not current_user.is_admin and player.coach_id != current_user.id:
         flash('You do not have permission to create a report for this player', 'error')
-        return redirect(url_for('main.dashboard', period=current_period))
+        return redirect(url_for('main.dashboard'))
 
-    # Get template for the group
     template = (ReportTemplate.query
         .join(GroupTemplate)
         .filter(
@@ -1251,92 +1456,49 @@ def create_report(player_id):
     
     if not template:
         flash('No active template found for this group', 'error')
-        return redirect(url_for('main.dashboard', period=current_period))
+        return redirect(url_for('main.dashboard'))
 
-    if request.method == 'POST':
-        try:
-            # Create structured report content from template
-            content = {}
-            for section in template.sections:
-                content[section.name] = {}
-                for field in section.fields:
-                    field_key = f'field_{field.id}'
-                    if field.is_required and field_key not in request.form:
-                        raise ValueError(f'{field.name} is required')
-                    content[section.name][field.name] = request.form.get(field_key, '')
+    return render_template('pages/create_report.html', 
+                         player_id=player_id,
+                         student_name=player.student.name,
+                         group_name=player.tennis_group.name)
 
-            # Create new report
-            report = Report(
-                student_id=player.student_id,
-                coach_id=current_user.id,
-                group_id=player.group_id,
-                teaching_period_id=player.teaching_period_id,
-                programme_player_id=player.id,
-                template_id=template.id,
-                content=content,
-                date=datetime.utcnow()
-            )
-            
-            db.session.add(report)
-            player.report_submitted = True
-            db.session.commit()
-            
-            flash('Report created successfully', 'success')
-            return redirect(url_for('main.dashboard', period=current_period))
-            
-        except Exception as e:
-            db.session.rollback()
-            flash(f'Error creating report: {str(e)}', 'error')
-            return render_template('pages/create_report.html',
-                               player=player,
-                               template=template,
-                               current_period=current_period)
-    
-    # GET request
-    return render_template('pages/create_report.html',
-                         player=player,
-                         template=template,
-                         current_period=current_period)
-
-
-@main.route('/report/<int:report_id>/edit', methods=['GET', 'POST'])
+@main.route('/api/reports/create/<int:player_id>', methods=['POST'])
 @login_required
-def edit_report(report_id):
-    current_period = request.args.get('period')
-    report = Report.query.get_or_404(report_id)
+def submit_report(player_id):
+    player = ProgrammePlayers.query.get_or_404(player_id)
     
-    if report.coach_id != current_user.id:
-        flash('You do not have permission to edit this report', 'error')
-        return redirect(url_for('main.dashboard', period=current_period))
-    
-    template = report.template
-    
-    if request.method == 'POST':
-        try:
-            # Update report content
-            content = {}
-            for section in template.sections:
-                content[section.name] = {}
-                for field in section.fields:
-                    field_key = f'field_{field.id}'
-                    if field.is_required and field_key not in request.form:
-                        raise ValueError(f'{field.name} is required')
-                    content[section.name][field.name] = request.form.get(field_key, '')
-            
-            report.content = content
-            db.session.commit()
-            
-            flash('Report updated successfully', 'success')
-            return redirect(url_for('main.dashboard', period=current_period))
-            
-        except Exception as e:
-            db.session.rollback()
-            flash(f'Error updating report: {str(e)}', 'error')
-    
-    return render_template('pages/edit_report.html',
-                         report=report,
-                         template=template,
-                         current_period=current_period)
+    # Permission check
+    if not current_user.is_admin and player.coach_id != current_user.id:
+        return jsonify({'error': 'Permission denied'}), 403
+        
+    try:
+        data = request.get_json()
+        
+        report = Report(
+            student_id=player.student_id,
+            coach_id=current_user.id,
+            group_id=player.group_id,
+            teaching_period_id=player.teaching_period_id,
+            programme_player_id=player.id,
+            template_id=data['template_id'],
+            content=data['content'],
+            date=datetime.utcnow()
+        )
+        
+        player.report_submitted = True
+        db.session.add(report)
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Report submitted successfully',
+            'report_id': report.id
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error submitting report: {str(e)}")
+        return jsonify({'error': str(e)}), 400
 
 @main.route('/api/reports/template/<int:player_id>', methods=['GET'])
 @login_required

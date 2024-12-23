@@ -105,6 +105,14 @@ const NavigationBar: React.FC<NavigationBarProps> = ({ currentUser }) => {
                       Coaches
                     </a>
                   </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <a
+                      href={`/clubs/manage/${clubId}/report-templates`}
+                      className="flex items-center w-full"
+                    >
+                      Report Templates
+                    </a>
+                  </DropdownMenuItem>
                   {currentUser.is_super_admin && (
                     <DropdownMenuItem>
                       <a 
