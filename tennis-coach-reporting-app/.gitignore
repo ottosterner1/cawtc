@@ -18,3 +18,4 @@ venv/
 .vscode/
 node_modules/
 .vite/
+migrations/

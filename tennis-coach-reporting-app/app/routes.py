@@ -672,7 +672,6 @@ def edit_report_page(report_id):
 @login_required
 @verify_club_access()
 def report_operations(report_id):
-    """API endpoint for getting and updating reports"""
     report = Report.query.get_or_404(report_id)
     
     # Check permissions
@@ -688,6 +687,7 @@ def report_operations(report_id):
             'id': report.id,
             'studentName': report.student.name,
             'groupName': report.tennis_group.name,
+            'recommendedGroupId': report.recommended_group_id,  # Make sure this is included
             'submissionDate': report.date.isoformat() if report.date else None,
             'content': report.content,
             'canEdit': current_user.is_admin or report.coach_id == current_user.id
@@ -699,9 +699,9 @@ def report_operations(report_id):
             'name': template.name,
             'description': template.description,
             'sections': [{
-                'id': section.id,
-                'name': section.name,
-                'order': section.order,
+                'id': s.id,
+                'name': s.name,
+                'order': s.order,
                 'fields': [{
                     'id': field.id,
                     'name': field.name,
@@ -710,15 +710,15 @@ def report_operations(report_id):
                     'isRequired': field.is_required,
                     'order': field.order,
                     'options': field.options
-                } for field in section.fields]
-            } for section in template.sections]
+                } for field in sorted(s.fields, key=lambda x: x.order)]
+            } for s in sorted(template.sections, key=lambda x: x.order)]
         }
 
         return jsonify({
             'report': report_data,
             'template': template_data
         })
-
+        
     elif request.method == 'PUT':
         try:
             data = request.get_json()
@@ -729,8 +729,11 @@ def report_operations(report_id):
             # Update report content
             report.content = data.get('content', {})
             
+            # Update recommended group
+            report.recommended_group_id = data.get('recommendedGroupId')
+            
             # Record the update time
-            report.date = datetime.now(timezone.utc)
+            report.date = datetime.utcnow()
             
             db.session.commit()
             
@@ -1333,7 +1336,6 @@ def get_groups():
             'id': group.id,
             'name': group.name,
             'description': group.description,
-            # Include the currently assigned template if any exists
             'currentTemplate': {
                 'id': assoc.template.id,
                 'name': assoc.template.name
@@ -1470,6 +1472,7 @@ def new_report(player_id):
 @main.route('/api/reports/create/<int:player_id>', methods=['POST'])
 @login_required
 def submit_report(player_id):
+    """Create a new report"""
     player = ProgrammePlayers.query.get_or_404(player_id)
     
     # Permission check
@@ -1478,7 +1481,25 @@ def submit_report(player_id):
         
     try:
         data = request.get_json()
+        print("Received data:", data)  # Debug log
         
+        # Extract and validate recommendedGroupId
+        recommended_group_id = data.get('recommendedGroupId')
+        print("Recommended group ID:", recommended_group_id)  # Debug log
+        
+        if not recommended_group_id:
+            return jsonify({'error': 'Recommended group is required'}), 400
+
+        # Validate that the recommended group exists and belongs to the same club
+        recommended_group = TennisGroup.query.filter_by(
+            id=recommended_group_id,
+            tennis_club_id=player.tennis_club_id
+        ).first()
+        
+        if not recommended_group:
+            return jsonify({'error': 'Invalid recommended group'}), 400
+
+        # Create report with the content and recommendedGroupId
         report = Report(
             student_id=player.student_id,
             coach_id=current_user.id,
@@ -1486,7 +1507,8 @@ def submit_report(player_id):
             teaching_period_id=player.teaching_period_id,
             programme_player_id=player.id,
             template_id=data['template_id'],
-            content=data['content'],
+            content=data['content'],  # Note: this should now be the correct content structure
+            recommended_group_id=recommended_group_id,
             date=datetime.utcnow()
         )
         
@@ -1502,6 +1524,7 @@ def submit_report(player_id):
     except Exception as e:
         db.session.rollback()
         print(f"Error submitting report: {str(e)}")
+        print(traceback.format_exc())
         return jsonify({'error': str(e)}), 400
 
 @main.route('/api/reports/template/<int:player_id>', methods=['GET'])

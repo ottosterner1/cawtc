@@ -3,9 +3,47 @@ import { createRoot } from 'react-dom/client';
 import DynamicReportForm from '../components/reports/DynamicReportForm';
 import '../index.css';
 
-const EditReportApp = () => {
-  const [report, setReport] = useState<any>(null);
-  const [template, setTemplate] = useState<any>(null);
+interface FieldOption {
+  id: number;
+  name: string;
+  description?: string;
+  fieldType: 'text' | 'number' | 'select' | 'textarea' | 'rating' | 'progress';
+  isRequired: boolean;
+  options?: {
+    min?: number;
+    max?: number;
+    options?: string[];
+  };
+  order: number;
+}
+
+interface Section {
+  id: number;
+  name: string;
+  order: number;
+  fields: FieldOption[];
+}
+
+interface Template {
+  id: number;
+  name: string;
+  description: string;
+  sections: Section[];
+}
+
+interface Report {
+  id: number;
+  studentName: string;
+  groupName: string;
+  recommendedGroupId: number;
+  content: Record<string, Record<string, any>>;
+  submissionDate: string;
+  canEdit: boolean;
+}
+
+const EditReportApp: React.FC = () => {
+  const [report, setReport] = useState<Report | null>(null);
+  const [template, setTemplate] = useState<Template | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -13,16 +51,21 @@ const EditReportApp = () => {
   const rootElement = document.getElementById('edit-report-root');
   const reportId = rootElement?.dataset.reportId;
 
+  // Fetch report and template data
   useEffect(() => {
-    const fetchReport = async () => {
+    const fetchReportData = async () => {
       try {
+        if (!reportId) throw new Error('Report ID not found');
+
         const response = await fetch(`/api/reports/${reportId}`);
         if (!response.ok) throw new Error('Failed to fetch report');
+        
         const data = await response.json();
+        console.log('Fetched data:', data); // Debug log
         setReport(data.report);
         setTemplate(data.template);
       } catch (err) {
-        setError((err as Error).message);
+        setError(err instanceof Error ? err.message : 'An error occurred');
         console.error('Error fetching report:', err);
       } finally {
         setLoading(false);
@@ -30,12 +73,15 @@ const EditReportApp = () => {
     };
 
     if (reportId) {
-      fetchReport();
+      fetchReportData();
     }
   }, [reportId]);
 
-  const handleSubmit = async (formData: Record<string, any>) => {
+  // Handle form submission
+  const handleSubmit = async (formData: Record<string, any>): Promise<void> => {
     try {
+      if (!reportId) throw new Error('Report ID not found');
+
       const response = await fetch(`/api/reports/${reportId}`, {
         method: 'PUT',
         headers: {
@@ -43,6 +89,7 @@ const EditReportApp = () => {
         },
         body: JSON.stringify({
           content: formData,
+          recommendedGroupId: formData.recommendedGroupId,
           template_id: template?.id
         }),
       });
@@ -51,7 +98,7 @@ const EditReportApp = () => {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to update report');
       }
-      
+
       window.location.href = `/reports/${reportId}`;
     } catch (err) {
       console.error('Error updating report:', err);
@@ -59,10 +106,13 @@ const EditReportApp = () => {
     }
   };
 
-  const handleDelete = async () => {
+  // Handle report deletion
+  const handleDelete = async (): Promise<void> => {
     try {
-      const response = await fetch(`/reports/delete/${reportId}`, {
-        method: 'POST',
+      if (!reportId) throw new Error('Report ID not found');
+
+      const response = await fetch(`/reports/delete/${reportId}`, { 
+        method: 'POST' 
       });
 
       if (!response.ok) {
@@ -76,15 +126,32 @@ const EditReportApp = () => {
     }
   };
 
-  if (loading) return <div className="flex justify-center items-center p-8">Loading...</div>;
-  if (error) return <div className="text-red-500 p-4">Error: {error}</div>;
-  if (!report || !template) return <div className="p-4">No report available</div>;
+  if (loading) {
+    return <div className="flex justify-center items-center p-8">Loading...</div>;
+  }
+
+  if (error) {
+    return <div className="text-red-500 p-4">Error: {error}</div>;
+  }
+
+  if (!report || !template) {
+    return <div className="p-4">No report available</div>;
+  }
+
+  // Structure the form data to match what DynamicReportForm expects
+  const initialFormData: Record<string, Record<string, any>> = {
+    ...report.content,
+    recommendedGroupId: { value: report.recommendedGroupId },
+    template_id: { value: template.id }
+  };
+
+  console.log('Initial form data:', initialFormData); // Debug log
 
   return (
     <div className="p-4">
       <div className="mb-4 flex justify-between items-center">
         <h1 className="text-2xl font-bold">Edit Report</h1>
-        <button 
+        <button
           onClick={() => setShowDeleteDialog(true)}
           className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600"
         >
@@ -119,7 +186,7 @@ const EditReportApp = () => {
         template={template}
         studentName={report.studentName}
         groupName={report.groupName}
-        initialData={report.content}
+        initialData={initialFormData}
         onSubmit={handleSubmit}
         onCancel={() => window.location.href = `/reports/${reportId}`}
       />
@@ -127,6 +194,7 @@ const EditReportApp = () => {
   );
 };
 
+// Initialize the React application
 const container = document.getElementById('edit-report-root');
 if (container) {
   const root = createRoot(container);
