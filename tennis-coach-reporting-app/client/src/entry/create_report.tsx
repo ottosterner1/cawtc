@@ -1,8 +1,13 @@
-// src/entry/create_report.tsx
 import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import DynamicReportForm from '../components/reports/DynamicReportForm';
 import '../index.css';
+
+interface FormData {
+  content: Record<string, Record<string, any>>;
+  recommendedGroupId: number;
+  template_id: number;
+}
 
 const CreateReportApp = () => {
   const [template, setTemplate] = useState<any>(null);
@@ -36,24 +41,28 @@ const CreateReportApp = () => {
     }
   }, [playerId]);
 
-  const handleSubmit = async (formData: Record<string, any>) => {
+  const handleSubmit = async (data: Record<string, any>) => {
     try {
+      // Transform data to match the backend API requirements
+      const formData: FormData = {
+        content: data.content,
+        recommendedGroupId: Number(data.recommendedGroupId),
+        template_id: data.template_id,
+      };
+
       const response = await fetch(`/api/reports/create/${playerId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          content: formData,
-          template_id: template?.id
-        }),
+        body: JSON.stringify(formData),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to submit report');
       }
-      
+
       // Redirect to dashboard on success
       window.location.href = '/dashboard';
     } catch (err) {
@@ -66,13 +75,12 @@ const CreateReportApp = () => {
   if (error) return <div className="text-red-500 p-4">Error: {error}</div>;
   if (!template) return <div className="p-4">No template available</div>;
 
-  // Pass the complete template data to DynamicReportForm
   return (
     <DynamicReportForm
       template={template}
       studentName={studentName}
       groupName={groupName}
-      onSubmit={handleSubmit}
+      onSubmit={handleSubmit} // Pass the transformed handleSubmit
       onCancel={() => window.location.href = '/dashboard'}
     />
   );

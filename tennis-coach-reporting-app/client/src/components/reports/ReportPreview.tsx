@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
 
 interface ReportPreviewProps {
@@ -7,6 +7,7 @@ interface ReportPreviewProps {
     groupName: string;
     submissionDate: string;
     content: Record<string, Record<string, any>>;
+    recommendedGroupId: number;
   };
   template: {
     sections: Array<{
@@ -20,6 +21,29 @@ interface ReportPreviewProps {
 }
 
 const ReportPreview: React.FC<ReportPreviewProps> = ({ report, template }) => {
+  const [recommendedGroupName, setRecommendedGroupName] = useState<string>('');
+
+  useEffect(() => {
+    const fetchGroupName = async () => {
+      try {
+        const response = await fetch('/api/groups');
+        if (response.ok) {
+          const groups = await response.json();
+          const group = groups.find((g: { id: number }) => g.id === report.recommendedGroupId);
+          if (group) {
+            setRecommendedGroupName(group.name);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching group name:', error);
+      }
+    };
+
+    if (report.recommendedGroupId) {
+      fetchGroupName();
+    }
+  }, [report.recommendedGroupId]);
+
   const formatValue = (value: any, fieldType: string) => {
     if (value === undefined || value === null || value === '') {
       return '-';
@@ -40,7 +64,8 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({ report, template }) => {
         <CardTitle>Report Summary</CardTitle>
         <div className="text-sm text-gray-600">
           <div>Student: {report.studentName}</div>
-          <div>Group: {report.groupName}</div>
+          <div>Current Group: {report.groupName}</div>
+          <div>Recommended Group: {recommendedGroupName || '-'}</div>
           <div>Submitted: {new Date(report.submissionDate).toLocaleDateString()}</div>
         </div>
       </CardHeader>

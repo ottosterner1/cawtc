@@ -47,13 +47,13 @@ const NavigationBar: React.FC<NavigationBarProps> = ({ currentUser }) => {
           <div className="flex">
             <div className="flex-shrink-0 flex items-center">
               <a href="/home" className="text-xl font-bold text-blue-600 hover:text-blue-700">
-                Coaching Automation
+                {clubName}
               </a>
             </div>
             <div className="hidden md:flex md:items-center md:ml-6">
               <div className="px-3 py-1 bg-gray-100 rounded-full flex items-center">
                 <span className="text-sm text-gray-600">
-                  {clubName}
+                  Online Reporting
                 </span>
               </div>
             </div>
@@ -129,16 +129,16 @@ const NavigationBar: React.FC<NavigationBarProps> = ({ currentUser }) => {
 
             {/* User Profile */}
             <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+              <DropdownMenuTrigger asChild>
                 <button className="flex items-center">
-                <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-medium">
+                  <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-medium">
                     {currentUser.name.split(' ')
-                    .slice(0, 2) // Take first two parts of the name
-                    .map(part => part.charAt(0)) // Get first letter of each part
-                    .join('')} {/* Join the letters together */}
-                </div>
+                      .slice(0, 2) // Take first two parts of the name
+                      .map(part => part.charAt(0)) // Get first letter of each part
+                      .join('')} {/* Join the letters together */}
+                  </div>
                 </button>
-            </DropdownMenuTrigger>
+              </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>
                   <div className="flex flex-col">

@@ -19,11 +19,11 @@ class UserRole(Enum):
     SUPER_ADMIN = 'super_admin'
 
 class FieldType(Enum):
-    TEXT = 'text'          # Short text input
-    TEXTAREA = 'textarea'  # Long text input
-    RATING = 'rating'      # 1-5 rating scale
-    SELECT = 'select'      # Multiple choice
-    PROGRESS = 'progress'  # Yes/Nearly/Not Yet
+    TEXT = 'text'
+    TEXTAREA = 'textarea'
+    RATING = 'rating'
+    SELECT = 'select'
+    PROGRESS = 'progress'
 
     @classmethod
     def get_default_options(cls, field_type):
@@ -36,7 +36,7 @@ class FieldType(Enum):
                 'options': ['Needs Development', 'Developing', 'Competent', 'Proficient', 'Excellent']
             },
             cls.SELECT: {
-                'options': []  # To be filled by user
+                'options': []
             },
             cls.PROGRESS: {
                 'options': ['Yes', 'Nearly', 'Not Yet']
@@ -118,7 +118,8 @@ class TennisGroup(db.Model):
 
     # Relationships
     tennis_club = db.relationship('TennisClub', back_populates='groups')
-    reports = db.relationship('Report', back_populates='tennis_group', lazy='dynamic')
+    reports = db.relationship('Report', foreign_keys='Report.group_id',back_populates='tennis_group')
+    recommended_in_reports = db.relationship('Report',foreign_keys='Report.recommended_group_id',backref='recommended_group')
     programme_players = db.relationship('ProgrammePlayers', back_populates='tennis_group', lazy='dynamic')
     template_associations = db.relationship('GroupTemplate', back_populates='group', cascade='all, delete-orphan')
     templates = db.relationship('ReportTemplate', secondary='group_template', back_populates='groups', overlaps="template_associations,groups")
@@ -180,6 +181,7 @@ class Report(db.Model):
     student_id = db.Column(db.Integer, db.ForeignKey('student.id'), nullable=False)
     coach_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     group_id = db.Column(db.Integer, db.ForeignKey('tennis_group.id'), nullable=False)
+    recommended_group_id = db.Column(db.Integer, db.ForeignKey('tennis_group.id'), nullable=True)
     teaching_period_id = db.Column(db.Integer, db.ForeignKey('teaching_period.id'), nullable=False)
     programme_player_id = db.Column(db.Integer, db.ForeignKey('programme_players.id'), nullable=False)
     template_id = db.Column(db.Integer, db.ForeignKey('report_template.id'), nullable=False)
@@ -196,7 +198,9 @@ class Report(db.Model):
     # Relationships
     student = db.relationship('Student', back_populates='reports')
     coach = db.relationship('User', back_populates='reports')
-    tennis_group = db.relationship('TennisGroup', back_populates='reports')
+    tennis_group = db.relationship('TennisGroup', 
+                                 foreign_keys=[group_id],
+                                 back_populates='reports')
     teaching_period = db.relationship('TeachingPeriod', back_populates='reports')
     programme_player = db.relationship('ProgrammePlayers', back_populates='reports')
     template = db.relationship('ReportTemplate', back_populates='reports')

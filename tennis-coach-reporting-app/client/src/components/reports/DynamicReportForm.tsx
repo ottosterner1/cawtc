@@ -2,6 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
 import { Alert, AlertDescription } from '../../components/ui/alert';
 
+interface Group {
+  id: number;
+  name: string;
+}
+
 interface FieldOption {
   id: number;
   name: string;
@@ -35,7 +40,7 @@ interface DynamicReportFormProps {
   studentName: string;
   groupName: string;
   initialData?: Record<string, Record<string, any>>;
-  onSubmit: (data: Record<string, Record<string, any>>) => Promise<void>;
+  onSubmit: (data: Record<string, any>) => Promise<void>;
   onCancel: () => void;
   isSubmitting?: boolean;
 }
@@ -52,11 +57,35 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
   const [formData, setFormData] = useState<Record<string, Record<string, any>>>({});
   const [errors, setErrors] = useState<string[]>([]);
   const [touched, setTouched] = useState<Record<string, Record<string, boolean>>>({});
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [recommendedGroupId, setRecommendedGroupId] = useState<number | string>('');
 
-  // Initialize form data with initial data if provided
+  // Fetch available groups
+  useEffect(() => {
+    const fetchGroups = async () => {
+      try {
+        const response = await fetch('/api/groups');
+        if (response.ok) {
+          const data = await response.json();
+          setGroups(data);
+        }
+      } catch (error) {
+        console.error('Error fetching groups:', error);
+      }
+    };
+    fetchGroups();
+  }, []);
+
+  // Initialize form data
   useEffect(() => {
     if (initialData) {
       setFormData(initialData);
+      // Check if recommendedGroupId exists and is a number
+      if ('recommendedGroupId' in initialData && typeof initialData.recommendedGroupId === 'number') {
+        setRecommendedGroupId(initialData.recommendedGroupId);
+      } else {
+        setRecommendedGroupId('');
+      }
       // Mark all fields as touched if we have initial data
       const touchedFields: Record<string, Record<string, boolean>> = {};
       template.sections.forEach(section => {
@@ -142,6 +171,10 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
       });
     });
 
+    if (!recommendedGroupId) {
+      newErrors.push('Please select a recommended group');
+    }
+
     setErrors(newErrors);
     return newErrors.length === 0;
   };
@@ -154,9 +187,17 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
     }
 
     try {
-      await onSubmit(formData);
+      // Changed data structure for submission
+      const submitData = {
+        content: formData,
+        recommendedGroupId: Number(recommendedGroupId),
+        template_id: template.id
+      };
+
+      await onSubmit(submitData);
     } catch (error) {
       setErrors(prev => [...prev, 'Failed to submit report. Please try again.']);
+      console.error('Submit error:', error);
     }
   };
 
@@ -177,20 +218,10 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
 
     switch (field.fieldType) {
       case 'text':
-        return (
-          <input
-            type="text"
-            {...commonProps}
-          />
-        );
+        return <input type="text" {...commonProps} />;
       
       case 'textarea':
-        return (
-          <textarea
-            {...commonProps}
-            className={`${commonProps.className} h-24`}
-          />
-        );
+        return <textarea {...commonProps} className={`${commonProps.className} h-24`} />;
       
       case 'number':
         return (
@@ -207,9 +238,7 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
           <select {...commonProps}>
             <option value="">Select an option</option>
             {field.options?.options?.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
+              <option key={option} value={option}>{option}</option>
             ))}
           </select>
         );
@@ -231,9 +260,7 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
           <select {...commonProps}>
             <option value="">Select progress</option>
             {['Yes', 'Nearly', 'Not Yet'].map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
+              <option key={option} value={option}>{option}</option>
             ))}
           </select>
         );
@@ -249,7 +276,7 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
         <CardTitle>{initialData ? 'Edit Report' : 'Create Report'}</CardTitle>
         <div className="text-sm text-gray-600">
           <div>Student: {studentName}</div>
-          <div>Group: {groupName}</div>
+          <div>Current Group: {groupName}</div>
         </div>
       </CardHeader>
       <CardContent>
@@ -302,6 +329,30 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
                 </div>
               </div>
             ))}
+
+          {/* Recommended Group Selection */}
+          <div className="space-y-2">
+            <label 
+              htmlFor="recommendedGroup"
+              className="block text-sm font-medium text-gray-700"
+            >
+              Recommended Group<span className="text-red-500 ml-1">*</span>
+            </label>
+            <select
+              id="recommendedGroup"
+              value={recommendedGroupId}
+              onChange={(e) => setRecommendedGroupId(Number(e.target.value) || '')}
+              className="w-full p-2 border rounded border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            >
+              <option value="">Select a group</option>
+              {groups.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
           <div className="flex justify-end space-x-4 mt-6">
             <button
