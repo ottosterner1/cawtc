@@ -32,6 +32,9 @@ export default defineConfig({
         create_report: path.resolve(__dirname, 'src/entry/create_report.tsx'),
         view_report: path.resolve(__dirname, 'src/entry/view_report.tsx'),
         edit_report: path.resolve(__dirname, 'src/entry/edit_report.tsx'),
+        programme_management: path.resolve(__dirname, 'src/entry/programme_management.tsx'),
+        edit_programme_player: path.resolve(__dirname, 'src/entry/edit_programme_player.tsx'),
+        add_programme_player: path.resolve(__dirname, 'src/entry/add_programme_player.tsx'),
       },
       output: {
         entryFileNames: 'assets/[name]-[hash].js',
