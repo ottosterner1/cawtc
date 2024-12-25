@@ -712,7 +712,10 @@ def accept_invitation(token):
         return redirect(url_for('main.index'))
 
 ##################################################
+## Screen: Manage Players
 ## These are my routes for the programme player management
+## Written by Otto Sterner
+## Date: 25/12/2024
 ##################################################
 
 @club_management.route('/manage/<int:club_id>/players', methods=['GET'])

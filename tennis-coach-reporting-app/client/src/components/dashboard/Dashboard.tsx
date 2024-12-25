@@ -41,9 +41,11 @@ const Dashboard: React.FC<DashboardProps> = ({
         const statsData = await statsResponse.json();
         setPeriods(statsData.periods);
         
+        // Automatically set the latest period if no period is selected
         if (!selectedPeriod && statsData.periods.length > 0) {
           const latestPeriod = statsData.periods[statsData.periods.length - 1];
           setSelectedPeriod(latestPeriod.id);
+          setStats(statsData.stats);
           return;
         }
         
@@ -92,7 +94,6 @@ const Dashboard: React.FC<DashboardProps> = ({
             value={selectedPeriod || ''}
             onChange={(e) => setSelectedPeriod(e.target.value ? Number(e.target.value) : null)}
           >
-            <option value="">Select Period</option>
             {periods.map((period) => (
               <option key={period.id} value={period.id}>{period.name}</option>
             ))}
