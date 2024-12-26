@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Alert, AlertDescription } from '../../components/ui/alert';
+import { Info } from 'lucide-react';
 
 interface BulkUploadSectionProps {
   periodId: number | null;
@@ -40,8 +41,6 @@ const BulkUploadSection: React.FC<BulkUploadSectionProps> = ({
 
       const result = await response.json();
       console.log('Upload success:', result);
-      
-      // Call onSuccess to trigger parent component refresh
       onSuccess();
     } catch (err) {
       console.error('Upload error:', err);
@@ -49,7 +48,7 @@ const BulkUploadSection: React.FC<BulkUploadSectionProps> = ({
     } finally {
       setUploading(false);
     }
-};
+  };
 
   return (
     <div className="mb-8 p-6 bg-gray-50 rounded-lg border border-gray-200">
@@ -79,6 +78,9 @@ const BulkUploadSection: React.FC<BulkUploadSectionProps> = ({
 
         <div className="bg-blue-50 rounded-md p-4">
           <div className="flex">
+            <div className="flex-shrink-0">
+              <Info className="h-5 w-5 text-blue-400" aria-hidden="true" />
+            </div>
             <div className="ml-3">
               <h3 className="text-sm font-medium text-blue-800">CSV Format Requirements</h3>
               <div className="mt-2 text-sm text-blue-700">
@@ -89,6 +91,9 @@ const BulkUploadSection: React.FC<BulkUploadSectionProps> = ({
                   <li>contact_email</li>
                   <li>coach_email</li>
                   <li>group_name</li>
+                  <li>day_of_week (e.g., Monday, Tuesday)</li>
+                  <li>start_time (HH:MM format)</li>
+                  <li>end_time (HH:MM format)</li>
                 </ul>
               </div>
             </div>

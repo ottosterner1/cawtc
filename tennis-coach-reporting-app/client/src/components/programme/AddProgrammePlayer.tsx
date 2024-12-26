@@ -3,19 +3,26 @@ import { Card, CardContent } from '../../components/ui/card';
 import { Alert, AlertDescription } from '../../components/ui/alert';
 import { Coach, Group, TeachingPeriod, AddPlayerFormData } from '../../types/programme';
 
+interface GroupTime {
+  id: number;
+  day_of_week: string;
+  start_time: string;
+  end_time: string;
+}
+
 interface FormData {
   student_name: string;
   date_of_birth: string;
   contact_email: string;
   coach_id: string;
   group_id: string;
+  group_time_id: string;
   teaching_period_id: string;
 }
 
 const AddProgrammePlayer: React.FC = () => {
-  // Extract clubId from URL path
   const urlParts = window.location.pathname.split('/');
-  const clubId = urlParts[3]; // /clubs/manage/:clubId/players/add
+  const clubId = urlParts[3];
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,17 +32,18 @@ const AddProgrammePlayer: React.FC = () => {
     contact_email: '',
     coach_id: '',
     group_id: '',
+    group_time_id: '',
     teaching_period_id: ''
   });
 
   const [coaches, setCoaches] = useState<Coach[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
+  const [groupTimes, setGroupTimes] = useState<GroupTime[]>([]);
   const [periods, setPeriods] = useState<TeachingPeriod[]>([]);
 
   useEffect(() => {
     const fetchData = async (): Promise<void> => {
       try {
-        console.log('Fetching data for club:', clubId);
         const [coachesRes, groupsRes, periodsRes] = await Promise.all([
           fetch('/clubs/api/coaches'),
           fetch('/clubs/api/groups'),
@@ -47,14 +55,10 @@ const AddProgrammePlayer: React.FC = () => {
         }
 
         const [coachesData, groupsData, periodsData] = await Promise.all([
-          coachesRes.json() as Promise<Coach[]>,
-          groupsRes.json() as Promise<Group[]>,
-          periodsRes.json() as Promise<TeachingPeriod[]>
+          coachesRes.json(),
+          groupsRes.json(),
+          periodsRes.json()
         ]);
-
-        console.log('Fetched coaches:', coachesData);
-        console.log('Fetched groups:', groupsData);
-        console.log('Fetched periods:', periodsData);
 
         setCoaches(coachesData);
         setGroups(groupsData);
@@ -68,6 +72,28 @@ const AddProgrammePlayer: React.FC = () => {
     fetchData();
   }, [clubId]);
 
+  // Fetch group times when group is selected
+  useEffect(() => {
+    const fetchGroupTimes = async () => {
+      if (!formData.group_id) {
+        setGroupTimes([]);
+        return;
+      }
+
+      try {
+        const response = await fetch(`/clubs/api/groups/${formData.group_id}/times`);
+        if (!response.ok) throw new Error('Failed to fetch group times');
+        const data = await response.json();
+        setGroupTimes(data);
+      } catch (err) {
+        console.error('Error fetching group times:', err);
+        setError('Failed to load group times');
+      }
+    };
+
+    fetchGroupTimes();
+  }, [formData.group_id]);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>): void => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -79,14 +105,13 @@ const AddProgrammePlayer: React.FC = () => {
     setError(null);
 
     try {
-      console.log('Submitting form data:', formData);
-
       const submissionData: AddPlayerFormData = {
         student_name: formData.student_name,
         date_of_birth: formData.date_of_birth,
         contact_email: formData.contact_email,
         coach_id: parseInt(formData.coach_id),
         group_id: parseInt(formData.group_id),
+        group_time_id: parseInt(formData.group_time_id),
         teaching_period_id: parseInt(formData.teaching_period_id)
       };
 
@@ -103,7 +128,6 @@ const AddProgrammePlayer: React.FC = () => {
         throw new Error(errorData.error || 'Failed to add player');
       }
 
-      // Updated navigation path
       window.location.href = `/clubs/manage/${clubId}/players`;
     } catch (err) {
       console.error('Error adding player:', err);
@@ -115,6 +139,13 @@ const AddProgrammePlayer: React.FC = () => {
 
   const handleCancel = (): void => {
     window.location.href = `/clubs/manage/${clubId}/players`;
+  };
+
+  const formatTime = (time: string): string => {
+    return new Date(`2000-01-01T${time}`).toLocaleTimeString([], { 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
   };
 
   if (error) {
@@ -132,7 +163,7 @@ const AddProgrammePlayer: React.FC = () => {
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-            {/* Student Name */}
+            {/* Existing fields remain the same */}
             <div className="space-y-2">
               <label htmlFor="student_name" className="block text-sm font-medium text-gray-700">
                 Student Name
@@ -148,7 +179,6 @@ const AddProgrammePlayer: React.FC = () => {
               />
             </div>
 
-            {/* Date of Birth */}
             <div className="space-y-2">
               <label htmlFor="date_of_birth" className="block text-sm font-medium text-gray-700">
                 Date of Birth
@@ -164,7 +194,6 @@ const AddProgrammePlayer: React.FC = () => {
               />
             </div>
 
-            {/* Contact Email */}
             <div className="space-y-2">
               <label htmlFor="contact_email" className="block text-sm font-medium text-gray-700">
                 Contact Email
@@ -180,7 +209,6 @@ const AddProgrammePlayer: React.FC = () => {
               />
             </div>
 
-            {/* Coach Selection */}
             <div className="space-y-2">
               <label htmlFor="coach_id" className="block text-sm font-medium text-gray-700">
                 Coach
@@ -194,7 +222,6 @@ const AddProgrammePlayer: React.FC = () => {
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
               >
                 <option value="">Select a coach</option>
-                {coaches.length === 0 ? <p>No coaches available</p> : null}
                 {coaches.map(coach => (
                   <option key={coach.id} value={coach.id}>
                     {coach.name}
@@ -203,7 +230,6 @@ const AddProgrammePlayer: React.FC = () => {
               </select>
             </div>
 
-            {/* Group Selection */}
             <div className="space-y-2">
               <label htmlFor="group_id" className="block text-sm font-medium text-gray-700">
                 Group
@@ -225,7 +251,28 @@ const AddProgrammePlayer: React.FC = () => {
               </select>
             </div>
 
-            {/* Teaching Period Selection */}
+            {/* New Group Time Selection */}
+            <div className="space-y-2">
+              <label htmlFor="group_time_id" className="block text-sm font-medium text-gray-700">
+                Group Time
+              </label>
+              <select
+                id="group_time_id"
+                name="group_time_id"
+                value={formData.group_time_id}
+                onChange={handleInputChange}
+                required
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+              >
+                <option value="">Select a time slot</option>
+                {groupTimes.map(time => (
+                  <option key={time.id} value={time.id}>
+                    {time.day_of_week} {formatTime(time.start_time)} - {formatTime(time.end_time)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="space-y-2">
               <label htmlFor="teaching_period_id" className="block text-sm font-medium text-gray-700">
                 Teaching Period

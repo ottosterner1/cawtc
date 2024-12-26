@@ -45,6 +45,47 @@ interface DynamicReportFormProps {
   isSubmitting?: boolean;
 }
 
+interface ProgressOptionsProps {
+  value: string;
+  onChange: (value: string) => void;
+  error?: boolean;
+  isRequired?: boolean;
+  name: string;
+}
+
+const ProgressOptions: React.FC<ProgressOptionsProps> = ({ 
+  value, 
+  onChange, 
+  isRequired,
+  name 
+}) => {
+  const options = ['Yes', 'Nearly', 'Not Yet'];
+
+  return (
+    <div className="flex space-x-6 items-center">
+      {options.map((option) => (
+        <label
+          key={option}
+          className={`flex items-center space-x-2 cursor-pointer ${
+            value === option ? 'text-blue-600' : 'text-gray-700'
+          }`}
+        >
+          <input
+            type="radio"
+            name={name}
+            value={option}
+            checked={value === option}
+            onChange={() => onChange(option)}
+            className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+            required={isRequired && !value}
+          />
+          <span className="text-sm">{option}</span>
+        </label>
+      ))}
+    </div>
+  );
+};
+
 const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
   template,
   studentName,
@@ -60,7 +101,6 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
   const [groups, setGroups] = useState<Group[]>([]);
   const [recommendedGroupId, setRecommendedGroupId] = useState<number | string>('');
 
-  // Fetch available groups
   useEffect(() => {
     const fetchGroups = async () => {
       try {
@@ -76,17 +116,14 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
     fetchGroups();
   }, []);
 
-  // Initialize form data
   useEffect(() => {
     if (initialData) {
       setFormData(initialData);
-      // Check if recommendedGroupId exists and is a number
       if ('recommendedGroupId' in initialData && typeof initialData.recommendedGroupId === 'number') {
         setRecommendedGroupId(initialData.recommendedGroupId);
       } else {
         setRecommendedGroupId('');
       }
-      // Mark all fields as touched if we have initial data
       const touchedFields: Record<string, Record<string, boolean>> = {};
       template.sections.forEach(section => {
         touchedFields[section.name] = {};
@@ -96,7 +133,6 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
       });
       setTouched(touchedFields);
     } else {
-      // Initialize empty form data structure
       const initialFormData: Record<string, Record<string, any>> = {};
       template.sections.forEach(section => {
         initialFormData[section.name] = {};
@@ -117,7 +153,6 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
       }
     }));
 
-    // Mark field as touched
     setTouched(prev => ({
       ...prev,
       [sectionName]: {
@@ -126,7 +161,6 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
       }
     }));
 
-    // Clear any errors related to this field
     setErrors(prev => prev.filter(error => !error.includes(fieldName)));
   };
 
@@ -187,7 +221,6 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
     }
 
     try {
-      // Changed data structure for submission
       const submitData = {
         content: formData,
         recommendedGroupId: Number(recommendedGroupId),
@@ -206,6 +239,36 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
     const isTouched = touched[section.name]?.[field.name];
     const error = isTouched ? validateField(section, field) : null;
 
+    if (field.fieldType === 'progress') {
+      return (
+        <div className="flex justify-between items-center py-2">
+          <div className="flex-1">
+            <label 
+              htmlFor={`field_${section.id}_${field.id}`}
+              className="text-sm font-medium text-gray-700"
+            >
+              {field.name}
+              {field.isRequired && <span className="text-red-500 ml-1">*</span>}
+            </label>
+            {field.description && (
+              <p className="text-sm text-gray-500 inline ml-2">
+                {field.description}
+              </p>
+            )}
+          </div>
+          <div className="flex-1">
+            <ProgressOptions
+              value={value}
+              onChange={(newValue) => handleFieldChange(section.name, field.name, newValue)}
+              error={!!error}
+              isRequired={field.isRequired}
+              name={`progress_${section.id}_${field.id}`}
+            />
+          </div>
+        </div>
+      );
+    }
+
     const commonProps = {
       id: `field_${section.id}_${field.id}`,
       value,
@@ -218,51 +281,105 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
 
     switch (field.fieldType) {
       case 'text':
-        return <input type="text" {...commonProps} />;
+        return (
+          <div className="space-y-2">
+            <label 
+              htmlFor={`field_${section.id}_${field.id}`}
+              className="block text-sm font-medium text-gray-700"
+            >
+              {field.name}
+              {field.isRequired && <span className="text-red-500 ml-1">*</span>}
+            </label>
+            {field.description && (
+              <p className="text-sm text-gray-500 mb-1">{field.description}</p>
+            )}
+            <input type="text" {...commonProps} />
+          </div>
+        );
       
       case 'textarea':
-        return <textarea {...commonProps} className={`${commonProps.className} h-24`} />;
+        return (
+          <div className="space-y-2">
+            <label 
+              htmlFor={`field_${section.id}_${field.id}`}
+              className="block text-sm font-medium text-gray-700"
+            >
+              {field.name}
+              {field.isRequired && <span className="text-red-500 ml-1">*</span>}
+            </label>
+            {field.description && (
+              <p className="text-sm text-gray-500 mb-1">{field.description}</p>
+            )}
+            <textarea {...commonProps} className={`${commonProps.className} h-24`} />
+          </div>
+        );
       
       case 'number':
         return (
-          <input
-            type="number"
-            min={field.options?.min}
-            max={field.options?.max}
-            {...commonProps}
-          />
+          <div className="space-y-2">
+            <label 
+              htmlFor={`field_${section.id}_${field.id}`}
+              className="block text-sm font-medium text-gray-700"
+            >
+              {field.name}
+              {field.isRequired && <span className="text-red-500 ml-1">*</span>}
+            </label>
+            {field.description && (
+              <p className="text-sm text-gray-500 mb-1">{field.description}</p>
+            )}
+            <input
+              type="number"
+              min={field.options?.min}
+              max={field.options?.max}
+              {...commonProps}
+            />
+          </div>
         );
       
       case 'select':
         return (
-          <select {...commonProps}>
-            <option value="">Select an option</option>
-            {field.options?.options?.map((option) => (
-              <option key={option} value={option}>{option}</option>
-            ))}
-          </select>
+          <div className="space-y-2">
+            <label 
+              htmlFor={`field_${section.id}_${field.id}`}
+              className="block text-sm font-medium text-gray-700"
+            >
+              {field.name}
+              {field.isRequired && <span className="text-red-500 ml-1">*</span>}
+            </label>
+            {field.description && (
+              <p className="text-sm text-gray-500 mb-1">{field.description}</p>
+            )}
+            <select {...commonProps}>
+              <option value="">Select an option</option>
+              {field.options?.options?.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </div>
         );
       
       case 'rating':
         return (
-          <select {...commonProps}>
-            <option value="">Select rating</option>
-            {[1, 2, 3, 4, 5].map((rating) => (
-              <option key={rating} value={rating}>
-                {rating} - {['Poor', 'Below Average', 'Average', 'Good', 'Excellent'][rating - 1]}
-              </option>
-            ))}
-          </select>
-        );
-      
-      case 'progress':
-        return (
-          <select {...commonProps}>
-            <option value="">Select progress</option>
-            {['Yes', 'Nearly', 'Not Yet'].map((option) => (
-              <option key={option} value={option}>{option}</option>
-            ))}
-          </select>
+          <div className="space-y-2">
+            <label 
+              htmlFor={`field_${section.id}_${field.id}`}
+              className="block text-sm font-medium text-gray-700"
+            >
+              {field.name}
+              {field.isRequired && <span className="text-red-500 ml-1">*</span>}
+            </label>
+            {field.description && (
+              <p className="text-sm text-gray-500 mb-1">{field.description}</p>
+            )}
+            <select {...commonProps}>
+              <option value="">Select rating</option>
+              {[1, 2, 3, 4, 5].map((rating) => (
+                <option key={rating} value={rating}>
+                  {rating} - {['Poor', 'Below Average', 'Average', 'Good', 'Excellent'][rating - 1]}
+                </option>
+              ))}
+            </select>
+          </div>
         );
       
       default:
@@ -302,25 +419,11 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
                   {section.fields
                     .sort((a, b) => a.order - b.order)
                     .map((field) => (
-                      <div key={field.id} className="space-y-2">
-                        <label 
-                          htmlFor={`field_${section.id}_${field.id}`}
-                          className="block text-sm font-medium text-gray-700"
-                        >
-                          {field.name}
-                          {field.isRequired && (
-                            <span className="text-red-500 ml-1">*</span>
-                          )}
-                        </label>
-                        {field.description && (
-                          <p className="text-sm text-gray-500 mb-1">
-                            {field.description}
-                          </p>
-                        )}
+                      <div key={field.id}>
                         {renderField(section, field)}
                         {touched[section.name]?.[field.name] && 
                          validateField(section, field) && (
-                          <p className="text-sm text-red-500">
+                          <p className="text-sm text-red-500 mt-1">
                             {validateField(section, field)}
                           </p>
                         )}
@@ -330,7 +433,6 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
               </div>
             ))}
 
-          {/* Recommended Group Selection */}
           <div className="space-y-2">
             <label 
               htmlFor="recommendedGroup"

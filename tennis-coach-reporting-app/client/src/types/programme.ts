@@ -40,5 +40,6 @@ export interface Student {
     contact_email: string;
     coach_id: number;
     group_id: number;
+    group_time_id: number;
     teaching_period_id: number;
   }

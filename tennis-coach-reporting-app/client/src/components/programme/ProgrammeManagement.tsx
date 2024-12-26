@@ -1,8 +1,8 @@
-// src/components/programme/ProgrammeManagement.tsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent } from '../../components/ui/card';
 import { Alert, AlertDescription } from '../../components/ui/alert';
 import { Download, PlusCircle, Pencil } from 'lucide-react';
+import BulkUploadSection from './BulkUploadSection';
 
 interface TeachingPeriod {
   id: number;
@@ -13,9 +13,31 @@ interface Player {
   id: number;
   student_name: string;
   group_name: string;
+  group_id: number;
+  group_time_id: number;
+  time_slot?: {
+    day_of_week: string;
+    start_time: string;
+    endTime: string;
+  };
   report_submitted: boolean;
   report_id: number | null;
   can_edit: boolean;
+}
+
+interface GroupedPlayers {
+  [groupId: string]: {
+    groupName: string;
+    timeSlots: {
+      [timeSlotId: string]: {
+        dayOfWeek: string;
+        startTime: string;
+        endTime: string;
+        players: Player[];
+      };
+    };
+    unassignedPlayers: Player[];
+  };
 }
 
 // PeriodFilter Component
@@ -45,7 +67,6 @@ const PeriodFilter: React.FC<{
   </div>
 );
 
-// PlayersList Component
 const PlayersList: React.FC<{
   players: Player[];
   loading: boolean;
@@ -68,69 +89,155 @@ const PlayersList: React.FC<{
     );
   }
 
+  // Group players by their groups and time slots
+  const groupedPlayers: GroupedPlayers = players.reduce((acc, player) => {
+    const groupId = String(player.group_id);
+    const timeSlotId = player.group_time_id ? String(player.group_time_id) : 'unassigned';
+
+    if (!acc[groupId]) {
+      acc[groupId] = {
+        groupName: player.group_name,
+        timeSlots: {},
+        unassignedPlayers: []
+      };
+    }
+
+    if (player.time_slot) {
+      if (!acc[groupId].timeSlots[timeSlotId]) {
+        acc[groupId].timeSlots[timeSlotId] = {
+          dayOfWeek: player.time_slot.day_of_week,
+          startTime: player.time_slot.start_time,
+          endTime: player.time_slot.endTime,
+          players: []
+        };
+      }
+      acc[groupId].timeSlots[timeSlotId].players.push(player);
+    } else {
+      acc[groupId].unassignedPlayers.push(player);
+    }
+
+    return acc;
+  }, {} as GroupedPlayers);
+
+  const formatTime = (time: string) => {
+    return new Date(`2000-01-01T${time}`).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
   return (
-    <div className="mt-8">
-      <h2 className="text-lg font-semibold mb-4">Current Players</h2>
-      <div className="overflow-x-auto shadow ring-1 ring-black ring-opacity-5 rounded-lg">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                Student
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                Group
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                Status
-              </th>
-              <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {players.map((player) => (
-              <tr key={player.id}>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="font-medium text-gray-900">{player.student_name}</div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  {player.group_name}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  {player.report_submitted ? (
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                      Completed
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                      Pending
-                    </span>
-                  )}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  {player.can_edit && (
-                    <button
-                      onClick={() => window.location.href = `/clubs/manage/${clubId}/players/${player.id}/edit`}
-                      className="inline-flex items-center px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-md hover:bg-indigo-100 transition-colors"
+    <div className="space-y-8">
+      {Object.entries(groupedPlayers).map(([groupId, group]) => (
+        <div key={groupId} className="bg-white shadow rounded-lg overflow-hidden">
+          {/* Group Header */}
+          <div className="p-4 bg-gray-50">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {group.groupName}
+              </h3>
+              <span className="text-gray-500">
+                {Object.values(group.timeSlots).reduce(
+                  (total, slot) => total + slot.players.length,
+                  group.unassignedPlayers.length
+                )}{' '}
+                players
+              </span>
+            </div>
+          </div>
+
+          {/* Time Slots */}
+          <div className="divide-y divide-gray-200">
+            {Object.entries(group.timeSlots).map(([timeSlotId, timeSlot]) => (
+              <div key={timeSlotId} className="p-4">
+                <h4 className="text-sm font-medium text-gray-700 mb-3">
+                  {timeSlot.dayOfWeek} {formatTime(timeSlot.startTime)} - {formatTime(timeSlot.endTime)}
+                </h4>
+                <div className="space-y-2">
+                  {timeSlot.players.map(player => (
+                    <div
+                      key={player.id}
+                      className="flex items-center justify-between px-4 py-2 bg-gray-50 rounded-lg"
                     >
-                      <Pencil className="h-4 w-4 mr-1" />
-                      Edit
-                    </button>
-                  )}
-                </td>
-              </tr>
+                      <div>
+                        <span className="font-medium text-gray-900">
+                          {player.student_name}
+                        </span>
+                        <span className="ml-2">
+                          {player.report_submitted ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              Completed
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                              Pending
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                      {player.can_edit && (
+                        <button
+                          onClick={() => window.location.href = `/clubs/manage/${clubId}/players/${player.id}/edit`}
+                          className="inline-flex items-center px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-md hover:bg-indigo-100 transition-colors"
+                        >
+                          <Pencil className="h-4 w-4 mr-1" />
+                          Edit
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
             ))}
-          </tbody>
-        </table>
-      </div>
+
+            {/* Unassigned Players Section */}
+            {group.unassignedPlayers.length > 0 && (
+              <div className="p-4">
+                <h4 className="text-sm font-medium text-gray-700 mb-3">
+                  Unassigned Time Slot
+                </h4>
+                <div className="space-y-2">
+                  {group.unassignedPlayers.map(player => (
+                    <div
+                      key={player.id}
+                      className="flex items-center justify-between px-4 py-2 bg-gray-50 rounded-lg"
+                    >
+                      <div>
+                        <span className="font-medium text-gray-900">
+                          {player.student_name}
+                        </span>
+                        <span className="ml-2">
+                          {player.report_submitted ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              Completed
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                              Pending
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                      {player.can_edit && (
+                        <button
+                          onClick={() => window.location.href = `/clubs/manage/${clubId}/players/${player.id}/edit`}
+                          className="inline-flex items-center px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-md hover:bg-indigo-100 transition-colors"
+                        >
+                          <Pencil className="h-4 w-4 mr-1" />
+                          Edit
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
     </div>
   );
 };
-
-// BulkUploadSection Component (imported from your existing file)
-import BulkUploadSection from './BulkUploadSection';
 
 // Main ProgrammeManagement Component
 const ProgrammeManagement = () => {

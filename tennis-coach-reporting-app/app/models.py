@@ -59,6 +59,33 @@ class CoachRole(Enum):
     ASSISTANT_COACH = 'Assistant Coach'
     JUNIOR_COACH = 'Junior Coach'
 
+class DayOfWeek(Enum):
+    MONDAY = 'Monday'
+    TUESDAY = 'Tuesday'
+    WEDNESDAY = 'Wednesday'
+    THURSDAY = 'Thursday'
+    FRIDAY = 'Friday'
+    SATURDAY = 'Saturday'
+    SUNDAY = 'Sunday'
+
+class TennisGroupTimes(db.Model):
+    __tablename__ = 'tennis_group_times'
+
+    id = db.Column(db.Integer, primary_key=True)
+    group_id = db.Column(db.Integer, db.ForeignKey('tennis_group.id'), nullable=False)
+    day_of_week = db.Column(db.Enum(DayOfWeek), nullable=False)
+    start_time = db.Column(db.Time, nullable=False)
+    end_time = db.Column(db.Time, nullable=False)
+    tennis_club_id = db.Column(db.Integer, db.ForeignKey('tennis_club.id'), nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=text('CURRENT_TIMESTAMP'))
+
+    # Relationships
+    tennis_group = db.relationship('TennisGroup', back_populates='group_times')
+    tennis_club = db.relationship('TennisClub', backref='group_times')
+
+    def __repr__(self):
+        return f'<TennisGroupTime {self.tennis_group.name} {self.day_of_week.value} {self.start_time}-{self.end_time}>'
+
 class TennisClub(db.Model):
     __tablename__ = 'tennis_club'
     __table_args__ = (
@@ -123,6 +150,10 @@ class TennisGroup(db.Model):
     programme_players = db.relationship('ProgrammePlayers', back_populates='tennis_group', lazy='dynamic')
     template_associations = db.relationship('GroupTemplate', back_populates='group', cascade='all, delete-orphan')
     templates = db.relationship('ReportTemplate', secondary='group_template', back_populates='groups', overlaps="template_associations,groups")
+    group_times = db.relationship('TennisGroupTimes', 
+                            back_populates='tennis_group', 
+                            cascade='all, delete-orphan',
+                            lazy='joined')
 
 class TeachingPeriod(db.Model):
     __tablename__ = 'teaching_period'
@@ -161,6 +192,7 @@ class ProgrammePlayers(db.Model):
     student_id = db.Column(db.Integer, db.ForeignKey('student.id'), nullable=False)
     coach_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     group_id = db.Column(db.Integer, db.ForeignKey('tennis_group.id'), nullable=False)
+    group_time_id = db.Column(db.Integer, db.ForeignKey('tennis_group_times.id'), nullable=True)
     teaching_period_id = db.Column(db.Integer, db.ForeignKey('teaching_period.id'), nullable=False)
     tennis_club_id = db.Column(db.Integer, db.ForeignKey('tennis_club.id'), nullable=False)
     report_submitted = db.Column(db.Boolean, default=False)
@@ -170,6 +202,7 @@ class ProgrammePlayers(db.Model):
     student = db.relationship('Student', back_populates='programme_players')
     coach = db.relationship('User', back_populates='programme_players')
     tennis_group = db.relationship('TennisGroup', back_populates='programme_players')
+    group_time = db.relationship('TennisGroupTimes', backref='programme_players')
     teaching_period = db.relationship('TeachingPeriod', back_populates='programme_players')
     tennis_club = db.relationship('TennisClub', back_populates='programme_players')
     reports = db.relationship('Report', back_populates='programme_player', lazy='dynamic')

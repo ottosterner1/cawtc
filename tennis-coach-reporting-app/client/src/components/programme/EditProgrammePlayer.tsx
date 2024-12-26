@@ -13,6 +13,13 @@ interface Group {
   name: string;
 }
 
+interface GroupTime {
+  id: number;
+  day_of_week: string;
+  start_time: string;
+  end_time: string;
+}
+
 interface PlayerData {
   student: {
     name: string;
@@ -21,6 +28,7 @@ interface PlayerData {
   };
   coach_id: number;
   group_id: number;
+  group_time_id: number;
 }
 
 interface FormData {
@@ -29,12 +37,12 @@ interface FormData {
   contact_email: string;
   coach_id: string;
   group_id: string;
+  group_time_id: string;
 }
 
 const EditProgrammePlayer: React.FC = () => {
-  // Parse URL to get club ID and player ID
   const urlParts = window.location.pathname.split('/');
-  const clubId = urlParts[3]; // /clubs/manage/:clubId/players/:playerId/edit
+  const clubId = urlParts[3];
   const playerId = urlParts[urlParts.length - 2];
 
   const [loading, setLoading] = useState(true);
@@ -44,19 +52,16 @@ const EditProgrammePlayer: React.FC = () => {
     date_of_birth: '',
     contact_email: '',
     coach_id: '',
-    group_id: ''
+    group_id: '',
+    group_time_id: ''
   });
   const [coaches, setCoaches] = useState<Coach[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
+  const [groupTimes, setGroupTimes] = useState<GroupTime[]>([]);
 
   useEffect(() => {
     const fetchData = async (): Promise<void> => {
       try {
-        // Extract player ID correctly from URL
-        const urlParts = window.location.pathname.split('/');
-        const playerId = urlParts[urlParts.length - 2]; // Gets the ID from the URL
-        console.log('Fetching data for playerId:', playerId);
-
         const [playerRes, coachesRes, groupsRes] = await Promise.all([
           fetch(`/clubs/api/players/${playerId}`),
           fetch('/clubs/api/coaches'),
@@ -73,29 +78,26 @@ const EditProgrammePlayer: React.FC = () => {
           groupsRes.json() as Promise<Group[]>
         ]);
 
-        console.log('Fetched player data:', playerData);
-        console.log('Fetched coaches:', coachesData);
+        // Fetch group times for the player's group
+        const groupTimesRes = await fetch(`/clubs/api/groups/${playerData.group_id}/times`);
+        if (!groupTimesRes.ok) {
+          throw new Error('Failed to fetch group times');
+        }
+        const groupTimesData = await groupTimesRes.json();
         
         setFormData({
           student_name: playerData.student.name,
           date_of_birth: playerData.student.date_of_birth || '',
           contact_email: playerData.student.contact_email,
-          coach_id: playerData.coach_id.toString(), // Ensure this is a string
-          group_id: playerData.group_id.toString()
+          coach_id: playerData.coach_id.toString(),
+          group_id: playerData.group_id.toString(),
+          group_time_id: playerData.group_time_id ? playerData.group_time_id.toString() : ''
         });
         
-        console.log('Setting coaches:', coachesData);
         setCoaches(coachesData);
         setGroups(groupsData);
+        setGroupTimes(groupTimesData);
 
-        // After setting data, log the current form data
-        console.log('Form data set to:', {
-          student_name: playerData.student.name,
-          date_of_birth: playerData.student.date_of_birth || '',
-          contact_email: playerData.student.contact_email,
-          coach_id: playerData.coach_id.toString(),
-          group_id: playerData.group_id.toString()
-        });
       } catch (err) {
         console.error('Error fetching data:', err);
         setError('Failed to load player data');
@@ -105,7 +107,29 @@ const EditProgrammePlayer: React.FC = () => {
     };
 
     fetchData();
-  }, []);
+  }, [playerId]);
+
+  // Fetch group times when group changes
+  useEffect(() => {
+    const fetchGroupTimes = async () => {
+      if (!formData.group_id) {
+        setGroupTimes([]);
+        return;
+      }
+
+      try {
+        const response = await fetch(`/clubs/api/groups/${formData.group_id}/times`);
+        if (!response.ok) throw new Error('Failed to fetch group times');
+        const data = await response.json();
+        setGroupTimes(data);
+      } catch (err) {
+        console.error('Error fetching group times:', err);
+        setError('Failed to load group times');
+      }
+    };
+
+    fetchGroupTimes();
+  }, [formData.group_id]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
@@ -120,7 +144,8 @@ const EditProgrammePlayer: React.FC = () => {
         body: JSON.stringify({
           ...formData,
           coach_id: parseInt(formData.coach_id),
-          group_id: parseInt(formData.group_id)
+          group_id: parseInt(formData.group_id),
+          group_time_id: formData.group_time_id ? parseInt(formData.group_time_id) : null
         })
       });
 
@@ -159,6 +184,13 @@ const EditProgrammePlayer: React.FC = () => {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>): void => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const formatTime = (time: string): string => {
+    return new Date(`2000-01-01T${time}`).toLocaleTimeString([], { 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
   };
 
   if (loading) {
@@ -259,6 +291,28 @@ const EditProgrammePlayer: React.FC = () => {
               >
                 {groups.map(group => (
                   <option key={group.id} value={group.id}>{group.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* New Group Time Selection */}
+            <div className="space-y-2">
+              <label htmlFor="group_time_id" className="block text-sm font-medium text-gray-700">
+                Group Time
+              </label>
+              <select
+                id="group_time_id"
+                name="group_time_id"
+                value={formData.group_time_id}
+                onChange={handleInputChange}
+                required
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+              >
+                <option value="">Select a time slot</option>
+                {groupTimes.map(time => (
+                  <option key={time.id} value={time.id}>
+                    {time.day_of_week} {formatTime(time.start_time)} - {formatTime(time.end_time)}
+                  </option>
                 ))}
               </select>
             </div>

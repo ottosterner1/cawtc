@@ -1,6 +1,7 @@
 from flask import Blueprint, app, jsonify, request, render_template, flash, redirect, url_for, session, make_response, current_app
+from sqlalchemy import case
 from app import db
-from app.models import TennisClub, User, TennisGroup, TeachingPeriod, UserRole, Student, ProgrammePlayers, CoachDetails, CoachQualification, CoachRole, CoachInvitation
+from app.models import TennisClub, User, TennisGroup, TeachingPeriod, UserRole, Student, ProgrammePlayers, CoachDetails, CoachQualification, CoachRole, CoachInvitation, DayOfWeek, TennisGroupTimes
 from datetime import datetime, timedelta
 from flask_login import login_required, current_user, login_user
 import traceback
@@ -318,6 +319,10 @@ def manage_groups(club_id):
     try:
         club = TennisClub.query.get_or_404(club_id)
 
+        if current_user.tennis_club_id != club.id:
+            flash('You can only manage groups in your own tennis club', 'error')
+            return redirect(url_for('main.home'))
+
         if request.method == 'POST':
             action = request.form.get('action')
             
@@ -395,7 +400,7 @@ def manage_groups(club_id):
                     return redirect(url_for('club_management.manage_groups', club_id=club_id))
 
                 # Check if the group has any players assigned to it
-                if group.programme_players:
+                if group.programme_players.count() > 0:
                     flash('Cannot delete group with players assigned to it', 'error')
                 else:
                     try:
@@ -405,17 +410,70 @@ def manage_groups(club_id):
                     except SQLAlchemyError as e:
                         db.session.rollback()
                         flash(f'Error deleting group: {str(e)}', 'error')
-            
-            else:
-                flash('Invalid action', 'error')
 
-        # Get all groups for this club
-        groups = TennisGroup.query.filter_by(tennis_club_id=club.id).order_by(TennisGroup.name).all()
-        return render_template('admin/manage_groups.html', club=club, groups=groups)
+            elif action == 'add_time':
+                group_id = request.form.get('group_id')
+                day = request.form.get('day_of_week')
+                start_time = request.form.get('start_time')
+                end_time = request.form.get('end_time')
 
-    except SQLAlchemyError as e:
-        flash(f'Database error: {str(e)}', 'error')
-        return redirect(url_for('main.home'))
+                if not all([group_id, day, start_time, end_time]):
+                    flash('All time fields are required', 'error')
+                    return redirect(url_for('club_management.manage_groups', club_id=club_id))
+
+                try:
+                    # Parse times
+                    start_time = datetime.strptime(start_time, '%H:%M').time()
+                    end_time = datetime.strptime(end_time, '%H:%M').time()
+
+                    # Validate end time is after start time
+                    if start_time >= end_time:
+                        flash('End time must be after start time', 'error')
+                        return redirect(url_for('club_management.manage_groups', club_id=club_id))
+
+                    # Create new time slot
+                    time_slot = TennisGroupTimes(
+                        group_id=group_id,
+                        day_of_week=DayOfWeek[day.upper()],
+                        start_time=start_time,
+                        end_time=end_time,
+                        tennis_club_id=club.id
+                    )
+                    db.session.add(time_slot)
+                    db.session.commit()
+                    flash('Time slot added successfully', 'success')
+                except ValueError as e:
+                    flash('Invalid time format', 'error')
+                except SQLAlchemyError as e:
+                    db.session.rollback()
+                    flash(f'Error adding time slot: {str(e)}', 'error')
+
+            elif action == 'delete_time':
+                time_id = request.form.get('time_id')
+                time_slot = TennisGroupTimes.query.get_or_404(time_id)
+
+                # Verify club ownership
+                if time_slot.tennis_club_id != club.id:
+                    flash('You do not have permission to delete this time slot', 'error')
+                else:
+                    try:
+                        db.session.delete(time_slot)
+                        db.session.commit()
+                        flash('Time slot deleted successfully', 'success')
+                    except SQLAlchemyError as e:
+                        db.session.rollback()
+                        flash(f'Error deleting time slot: {str(e)}', 'error')
+
+        # Get all groups for this club with their times
+        groups = TennisGroup.query.filter_by(
+            tennis_club_id=club.id
+        ).order_by(TennisGroup.name).all()
+
+        return render_template('admin/manage_groups.html', 
+                             club=club, 
+                             groups=groups,
+                             days_of_week=DayOfWeek)
+
     except Exception as e:
         flash(f'An error occurred: {str(e)}', 'error')
         return redirect(url_for('main.home'))
@@ -759,11 +817,8 @@ def manage_players(club_id):
 def bulk_upload_players():
     """API endpoint for bulk uploading players via CSV"""
     try:
-        # Add debug logging
         current_app.logger.info("Bulk upload endpoint called")
-        current_app.logger.info(f"Files in request: {request.files}")
-        current_app.logger.info(f"Form data: {request.form}")
-
+        
         if 'file' not in request.files:
             return jsonify({'error': 'No file uploaded'}), 400
             
@@ -778,7 +833,7 @@ def bulk_upload_players():
         # Get current club
         club = TennisClub.query.get_or_404(current_user.tennis_club_id)
 
-        # Read and validate CSV with explicit encoding
+        # Read and validate CSV
         try:
             df = pd.read_csv(file, encoding='utf-8')
             df = df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
@@ -788,7 +843,11 @@ def bulk_upload_players():
             return jsonify({'error': f'Error reading CSV file: {str(e)}'}), 400
         
         # Verify required columns
-        required_columns = ['student_name', 'date_of_birth', 'contact_email', 'coach_email', 'group_name']
+        required_columns = [
+            'student_name', 'date_of_birth', 'contact_email', 
+            'coach_email', 'group_name', 'day_of_week',
+            'start_time', 'end_time'
+        ]
         missing_columns = [col for col in required_columns if col not in df.columns]
         if missing_columns:
             return jsonify({'error': f'Missing columns: {", ".join(missing_columns)}'}), 400
@@ -799,9 +858,6 @@ def bulk_upload_players():
         groups = {group.name.lower(): group for group in 
                  TennisGroup.query.filter_by(tennis_club_id=club.id).all()}
 
-        current_app.logger.info(f"Found coaches: {list(coaches.keys())}")
-        current_app.logger.info(f"Found groups: {list(groups.keys())}")
-        
         # Verify teaching period
         teaching_period = TeachingPeriod.query.get(teaching_period_id)
         if not teaching_period or teaching_period.tennis_club_id != club.id:
@@ -814,7 +870,44 @@ def bulk_upload_players():
         # Process each row in the CSV
         for index, row in df.iterrows():
             try:
-                current_app.logger.info(f"Processing row {index + 2}: {row.to_dict()}")
+                # Validate coach
+                coach_email = row['coach_email'].lower()
+                if coach_email not in coaches:
+                    errors.append(f"Row {index + 2}: Coach with email {coach_email} not found")
+                    continue
+
+                # Validate group
+                group_name = row['group_name'].lower()
+                if group_name not in groups:
+                    errors.append(f"Row {index + 2}: Group {row['group_name']} not found")
+                    continue
+
+                # Parse time values
+                try:
+                    start_time = datetime.strptime(row['start_time'], '%H:%M').time()
+                    end_time = datetime.strptime(row['end_time'], '%H:%M').time()
+                except ValueError:
+                    errors.append(f"Row {index + 2}: Invalid time format. Use HH:MM")
+                    continue
+
+                # Find or create group time slot
+                try:
+                    day_of_week = DayOfWeek[row['day_of_week'].upper()]
+                except KeyError:
+                    errors.append(f"Row {index + 2}: Invalid day of week")
+                    continue
+
+                group_time = TennisGroupTimes.query.filter_by(
+                    group_id=groups[group_name].id,
+                    day_of_week=day_of_week,
+                    start_time=start_time,
+                    end_time=end_time,
+                    tennis_club_id=club.id
+                ).first()
+
+                if not group_time:
+                    errors.append(f"Row {index + 2}: Group time slot not found")
+                    continue
 
                 # Parse date of birth
                 try:
@@ -823,14 +916,39 @@ def bulk_upload_players():
                     errors.append(f"Row {index + 2}: Invalid date format - {str(e)}")
                     continue
 
-                # Rest of your processing logic...
-                # [Previous code remains the same]
+                # Get or create student
+                student = Student.query.filter_by(
+                    name=row['student_name'],
+                    tennis_club_id=club.id
+                ).first()
+
+                if not student:
+                    student = Student(
+                        name=row['student_name'],
+                        date_of_birth=date_of_birth,
+                        contact_email=row['contact_email'],
+                        tennis_club_id=club.id
+                    )
+                    db.session.add(student)
+                    students_created += 1
+
+                # Create programme player
+                player = ProgrammePlayers(
+                    student_id=student.id,
+                    coach_id=coaches[coach_email].id,
+                    group_id=groups[group_name].id,
+                    group_time_id=group_time.id,
+                    teaching_period_id=teaching_period.id,
+                    tennis_club_id=club.id
+                )
+                db.session.add(player)
+                players_created += 1
 
             except Exception as e:
                 current_app.logger.error(f"Error processing row {index + 2}: {str(e)}")
                 errors.append(f"Row {index + 2}: {str(e)}")
                 continue
-        
+
         # Handle results
         if errors:
             db.session.rollback()
@@ -838,7 +956,7 @@ def bulk_upload_players():
                 'error': 'Upload failed',
                 'details': errors
             }), 400
-        
+
         # Commit successful changes
         db.session.commit()
             
@@ -861,14 +979,17 @@ def download_template():
     club = TennisClub.query.get_or_404(current_user.tennis_club_id)
     
     csv_content = [
-        "student_name,date_of_birth,contact_email,coach_email,group_name",
-        "John Smith,05-Nov-2013,parent@example.com,coach@example.com,Red 1",
-        "Emma Jones,22-Mar-2014,emma.parent@example.com,coach@example.com,Red 2"
+        "student_name,date_of_birth,contact_email,coach_email,group_name,day_of_week,start_time,end_time",
+        "John Smith,05-Nov-2013,parent@example.com,coach@example.com,Red 1,Monday,16:00,17:00",
+        "Emma Jones,22-Mar-2014,emma.parent@example.com,coach@example.com,Red 2,Tuesday,15:30,16:30"
     ]
     
     # Add format explanation
-    csv_content.insert(0, "# Date format must be DD-MMM-YYYY (e.g., 05-Nov-2013, 22-Mar-2014)")
-    csv_content.insert(1, "#")
+    csv_content.insert(0, "# Format instructions:")
+    csv_content.insert(1, "# - Date format must be DD-MMM-YYYY (e.g., 05-Nov-2013)")
+    csv_content.insert(2, "# - Time format must be HH:MM (24-hour format)")
+    csv_content.insert(3, "# - Day of week must be: Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, or Sunday")
+    csv_content.insert(4, "#")
     
     response = make_response("\n".join(csv_content))
     response.headers["Content-Type"] = "text/csv"
@@ -933,6 +1054,7 @@ def player_api(player_id):
             },
             'coach_id': player.coach_id,
             'group_id': player.group_id,
+            'group_time_id': player.group_time_id,  # Add group time ID to response
             'teaching_period_id': player.teaching_period_id
         }
         current_app.logger.info(f"Returning player data: {response_data}")
@@ -941,6 +1063,8 @@ def player_api(player_id):
     elif request.method == 'PUT':
         try:
             data = request.get_json()
+            current_app.logger.info(f"Updating player with data: {data}")
+            
             if not data:
                 return jsonify({'error': 'No data provided'}), 400
 
@@ -963,9 +1087,16 @@ def player_api(player_id):
             if not group or group.tennis_club_id != current_user.tennis_club_id:
                 return jsonify({'error': 'Invalid group selected'}), 400
 
+            # Verify group time belongs to group and club
+            if data.get('group_time_id'):
+                group_time = TennisGroupTimes.query.get(data['group_time_id'])
+                if not group_time or group_time.tennis_club_id != current_user.tennis_club_id or group_time.group_id != group.id:
+                    return jsonify({'error': 'Invalid group time selected'}), 400
+
             # Update assignments
             player.coach_id = coach.id
             player.group_id = group.id
+            player.group_time_id = data.get('group_time_id')  # Update group time ID
             
             db.session.commit()
             return jsonify({'message': 'Player updated successfully'})
@@ -974,6 +1105,8 @@ def player_api(player_id):
             return jsonify({'error': f'Missing required field: {str(e)}'}), 400
         except Exception as e:
             db.session.rollback()
+            current_app.logger.error(f"Error updating player: {str(e)}")
+            current_app.logger.error(traceback.format_exc())
             return jsonify({'error': str(e)}), 400
 
     elif request.method == 'DELETE':
@@ -983,6 +1116,7 @@ def player_api(player_id):
             return jsonify({'message': 'Player removed successfully'})
         except Exception as e:
             db.session.rollback()
+            current_app.logger.error(f"Error deleting player: {str(e)}")
             return jsonify({'error': f'Failed to remove player: {str(e)}'}), 400
 
 @club_management.route('/api/players', methods=['POST'])
@@ -996,9 +1130,10 @@ def create_player():
             return jsonify({'error': 'No data provided'}), 400
 
         club_id = current_user.tennis_club_id
+        current_app.logger.info(f"Creating new player with data: {data}")
 
         # Validate data
-        required_fields = ['student_name', 'contact_email', 'coach_id', 'group_id', 'teaching_period_id']
+        required_fields = ['student_name', 'contact_email', 'coach_id', 'group_id', 'group_time_id', 'teaching_period_id']
         for field in required_fields:
             if field not in data:
                 return jsonify({'error': f'Missing required field: {field}'}), 400
@@ -1012,6 +1147,11 @@ def create_player():
         group = TennisGroup.query.get(data['group_id'])
         if not group or group.tennis_club_id != club_id:
             return jsonify({'error': 'Invalid group selected'}), 400
+
+        # Verify group time belongs to group and club
+        group_time = TennisGroupTimes.query.get(data['group_time_id'])
+        if not group_time or group_time.tennis_club_id != club_id or group_time.group_id != group.id:
+            return jsonify({'error': 'Invalid group time selected'}), 400
 
         # Verify teaching period belongs to club
         period = TeachingPeriod.query.get(data['teaching_period_id'])
@@ -1056,6 +1196,7 @@ def create_player():
             student_id=student.id,
             coach_id=data['coach_id'],
             group_id=data['group_id'],
+            group_time_id=data['group_time_id'],  # Add group time ID
             teaching_period_id=data['teaching_period_id'],
             tennis_club_id=club_id
         )
@@ -1070,6 +1211,8 @@ def create_player():
 
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"Error creating player: {str(e)}")
+        current_app.logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 400
 
 @club_management.route('/api/coaches')
@@ -1115,6 +1258,56 @@ def get_groups():
         'name': group.name,
         'description': group.description
     } for group in groups])
+
+@club_management.route('/api/groups/<int:group_id>/times')
+@login_required
+@admin_required
+def get_group_times(group_id):
+    """API endpoint for getting all time slots for a specific group"""
+    try:
+        current_app.logger.info(f"Fetching times for group_id: {group_id}")
+        
+        # Verify group belongs to user's club
+        group = TennisGroup.query.filter_by(
+            id=group_id,
+            tennis_club_id=current_user.tennis_club_id
+        ).first_or_404()
+        
+        # Get all time slots for this group - first get them unordered
+        times = TennisGroupTimes.query.filter_by(
+            group_id=group_id,
+            tennis_club_id=current_user.tennis_club_id
+        ).all()
+        
+        # Sort the results in Python instead of SQL
+        day_order = {
+            'Monday': 0,
+            'Tuesday': 1,
+            'Wednesday': 2,
+            'Thursday': 3,
+            'Friday': 4,
+            'Saturday': 5,
+            'Sunday': 6
+        }
+        
+        # Sort using Python's sorted function
+        times = sorted(times, 
+                      key=lambda x: (day_order[x.day_of_week.value], x.start_time))
+        
+        response_data = [{
+            'id': time.id,
+            'day_of_week': time.day_of_week.value,
+            'start_time': time.start_time.strftime('%H:%M'),
+            'end_time': time.end_time.strftime('%H:%M')
+        } for time in times]
+        
+        current_app.logger.info(f"Returning {len(response_data)} time slots")
+        return jsonify(response_data)
+        
+    except Exception as e:
+        current_app.logger.error(f"Error fetching group times: {str(e)}")
+        current_app.logger.error(traceback.format_exc())
+        return jsonify({'error': str(e)}), 500
 
 @club_management.route('/api/teaching-periods')
 @login_required
