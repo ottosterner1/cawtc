@@ -76,10 +76,19 @@ export interface CoachSummary {
   reports_completed: number;
 }
 
+interface TimeSlot {
+  day_of_week: string;
+  start_time: string;
+  end_time: string;
+}
+
 export interface ProgrammePlayer {
   id: number;
   student_name: string;
   group_name: string;
+  group_id: number;
+  group_time_id: number | null;
+  time_slot: TimeSlot | null;
   report_submitted: boolean;
   report_id?: number;
   can_edit: boolean;

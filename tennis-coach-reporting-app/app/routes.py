@@ -5,7 +5,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from app.models import (
     User, TennisGroup, TeachingPeriod, Student, Report, UserRole, 
     TennisClub, ProgrammePlayers, CoachInvitation, CoachDetails,
-    GroupTemplate, ReportTemplate, TemplateSection, TemplateField, FieldType
+    GroupTemplate, ReportTemplate, TemplateSection, TemplateField, FieldType, TennisGroupTimes
 )
 from app import db
 from app.auth import oauth
@@ -467,6 +467,8 @@ def programme_players():
         ).join(
             TennisGroup, ProgrammePlayers.group_id == TennisGroup.id
         ).outerjoin(
+            TennisGroupTimes, ProgrammePlayers.group_time_id == TennisGroupTimes.id
+        ).outerjoin(
             Report, and_(
                 ProgrammePlayers.id == Report.programme_player_id,
                 ProgrammePlayers.teaching_period_id == Report.teaching_period_id
@@ -475,6 +477,11 @@ def programme_players():
             ProgrammePlayers.id,
             Student.name.label('student_name'),
             TennisGroup.name.label('group_name'),
+            TennisGroup.id.label('group_id'),
+            ProgrammePlayers.group_time_id,
+            TennisGroupTimes.day_of_week,
+            TennisGroupTimes.start_time,
+            TennisGroupTimes.end_time,
             Report.id.label('report_id'),
             Report.coach_id,
             ProgrammePlayers.coach_id.label('assigned_coach_id')
@@ -484,6 +491,13 @@ def programme_players():
             'id': player.id,
             'student_name': player.student_name,
             'group_name': player.group_name,
+            'group_id': player.group_id,
+            'group_time_id': player.group_time_id,
+            'time_slot': {
+                'day_of_week': player.day_of_week.value if player.day_of_week else None,
+                'start_time': player.start_time.strftime('%H:%M') if player.start_time else None,
+                'end_time': player.end_time.strftime('%H:%M') if player.end_time else None
+            } if player.day_of_week else None,
             'report_submitted': player.report_id is not None,
             'report_id': player.report_id,
             'can_edit': current_user.is_admin or current_user.is_super_admin or 
