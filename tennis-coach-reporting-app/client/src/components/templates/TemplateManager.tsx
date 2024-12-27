@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
 import { Alert, AlertDescription } from '../../components/ui/alert';
-import { ReportTemplate } from '../../types/dashboard';
+import type { ReportTemplate } from '../../types/dashboard';
 import TemplateEditor from './TemplateEditor';
 
 const TemplateManager: React.FC = () => {
@@ -43,6 +43,24 @@ const TemplateManager: React.FC = () => {
       fetchTemplates();
     } catch (err) {
       setError('Failed to save template');
+    }
+  };
+
+  const handleDeleteTemplate = async (templateId: number) => {
+    if (!confirm('Are you sure you want to delete this template? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/report-templates/${templateId}`, {
+        method: 'DELETE',
+      });
+      
+      if (!response.ok) throw new Error('Failed to delete template');
+      
+      fetchTemplates();
+    } catch (err) {
+      setError('Failed to delete template');
     }
   };
 
@@ -108,6 +126,12 @@ const TemplateManager: React.FC = () => {
                       >
                         Edit
                       </button>
+                      <button
+                        onClick={() => handleDeleteTemplate(template.id!)}
+                        className="text-sm text-red-500 hover:text-red-600"
+                      >
+                        Delete
+                      </button>
                     </div>
                   </div>
                 </CardHeader>
@@ -122,9 +146,6 @@ const TemplateManager: React.FC = () => {
                               <span className="mr-2">•</span>
                               {field.name}
                               {field.isRequired && <span className="ml-1 text-red-500">*</span>}
-                              <span className="ml-2 text-gray-400">
-                                ({FIELD_TYPES.find(t => t.value === field.fieldType)?.label})
-                              </span>
                             </li>
                           ))}
                         </ul>
@@ -151,13 +172,5 @@ const TemplateManager: React.FC = () => {
     </div>
   );
 };
-
-const FIELD_TYPES = [
-  { value: 'text', label: 'Short Text' },
-  { value: 'textarea', label: 'Long Text' },
-  { value: 'rating', label: 'Rating (1-5)' },
-  { value: 'select', label: 'Multiple Choice' },
-  { value: 'progress', label: 'Progress Scale (Yes/Nearly/Not Yet)' }
-];
 
 export default TemplateManager;

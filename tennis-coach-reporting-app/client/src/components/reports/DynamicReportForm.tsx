@@ -1,90 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
 import { Alert, AlertDescription } from '../../components/ui/alert';
-
-interface Group {
-  id: number;
-  name: string;
-}
-
-interface FieldOption {
-  id: number;
-  name: string;
-  description?: string;
-  fieldType: 'text' | 'number' | 'select' | 'textarea' | 'rating' | 'progress';
-  isRequired: boolean;
-  options?: {
-    min?: number;
-    max?: number;
-    options?: string[];
-  };
-  order: number;
-}
-
-interface Section {
-  id: number;
-  name: string;
-  order: number;
-  fields: FieldOption[];
-}
-
-interface Template {
-  id: number;
-  name: string;
-  description: string;
-  sections: Section[];
-}
-
-interface DynamicReportFormProps {
-  template: Template;
-  studentName: string;
-  groupName: string;
-  initialData?: Record<string, Record<string, any>>;
-  onSubmit: (data: Record<string, any>) => Promise<void>;
-  onCancel: () => void;
-  isSubmitting?: boolean;
-}
-
-interface ProgressOptionsProps {
-  value: string;
-  onChange: (value: string) => void;
-  error?: boolean;
-  isRequired?: boolean;
-  name: string;
-}
-
-const ProgressOptions: React.FC<ProgressOptionsProps> = ({ 
-  value, 
-  onChange, 
-  isRequired,
-  name 
-}) => {
-  const options = ['Yes', 'Nearly', 'Not Yet'];
-
-  return (
-    <div className="flex space-x-6 items-center">
-      {options.map((option) => (
-        <label
-          key={option}
-          className={`flex items-center space-x-2 cursor-pointer ${
-            value === option ? 'text-blue-600' : 'text-gray-700'
-          }`}
-        >
-          <input
-            type="radio"
-            name={name}
-            value={option}
-            checked={value === option}
-            onChange={() => onChange(option)}
-            className="w-4 h-4 text-blue-600 focus:ring-blue-500"
-            required={isRequired && !value}
-          />
-          <span className="text-sm">{option}</span>
-        </label>
-      ))}
-    </div>
-  );
-};
+import type { 
+  Group, 
+  FieldOption, 
+  Section, 
+  DynamicReportFormProps
+} from '../../types/dashboard';
 
 const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
   template,
@@ -101,6 +23,7 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
   const [groups, setGroups] = useState<Group[]>([]);
   const [recommendedGroupId, setRecommendedGroupId] = useState<number | string>('');
 
+  // Fetch available groups
   useEffect(() => {
     const fetchGroups = async () => {
       try {
@@ -117,32 +40,37 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
   }, []);
 
   useEffect(() => {
-    if (initialData) {
-      setFormData(initialData);
-      if ('recommendedGroupId' in initialData && typeof initialData.recommendedGroupId === 'number') {
-        setRecommendedGroupId(initialData.recommendedGroupId);
-      } else {
-        setRecommendedGroupId('');
+  
+    const allSections = new Set([
+      ...template.sections.map(section => section.name),
+      ...Object.keys(initialData?.content || {})
+    ]);
+  
+    const initializedFormData: Record<string, Record<string, string>> = {};
+    const initializedTouchedFields: Record<string, Record<string, boolean>> = {};
+  
+    allSections.forEach(sectionName => {
+      const templateSection = template.sections.find(section => section.name === sectionName);
+      const initialContent = initialData?.content?.[sectionName] || {};
+  
+      // Initialize form data
+      initializedFormData[sectionName] = { ...initialContent };
+  
+      // Initialize touched fields for all template fields
+      initializedTouchedFields[sectionName] = {};
+      if (templateSection) {
+        templateSection.fields.forEach(field => {
+          initializedFormData[sectionName][field.name] = initialContent[field.name] || '';
+          initializedTouchedFields[sectionName][field.name] = false;
+        });
       }
-      const touchedFields: Record<string, Record<string, boolean>> = {};
-      template.sections.forEach(section => {
-        touchedFields[section.name] = {};
-        section.fields.forEach(field => {
-          touchedFields[section.name][field.name] = true;
-        });
-      });
-      setTouched(touchedFields);
-    } else {
-      const initialFormData: Record<string, Record<string, any>> = {};
-      template.sections.forEach(section => {
-        initialFormData[section.name] = {};
-        section.fields.forEach(field => {
-          initialFormData[section.name][field.name] = '';
-        });
-      });
-      setFormData(initialFormData);
-    }
+    });
+  
+    setFormData(initializedFormData);
+    setTouched(initializedTouchedFields);
+    setRecommendedGroupId(initialData?.recommendedGroupId || '');
   }, [initialData, template]);
+  
 
   const handleFieldChange = (sectionName: string, fieldName: string, value: any) => {
     setFormData(prev => ({
@@ -213,6 +141,7 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
     return newErrors.length === 0;
   };
 
+  // Update handleSubmit function
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -222,7 +151,7 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
 
     try {
       const submitData = {
-        content: formData,
+        content: formData,  // Direct form data
         recommendedGroupId: Number(recommendedGroupId),
         template_id: template.id
       };
@@ -241,14 +170,13 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
 
     if (field.fieldType === 'progress') {
       return (
-        <div className="flex justify-between items-center py-2">
+        <div className="flex py-2">
           <div className="flex-1">
             <label 
               htmlFor={`field_${section.id}_${field.id}`}
               className="text-sm font-medium text-gray-700"
             >
               {field.name}
-              {field.isRequired && <span className="text-red-500 ml-1">*</span>}
             </label>
             {field.description && (
               <p className="text-sm text-gray-500 inline ml-2">
@@ -256,14 +184,17 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
               </p>
             )}
           </div>
-          <div className="flex-1">
-            <ProgressOptions
-              value={value}
-              onChange={(newValue) => handleFieldChange(section.name, field.name, newValue)}
-              error={!!error}
-              isRequired={field.isRequired}
-              name={`progress_${section.id}_${field.id}`}
-            />
+          <div className="grid grid-cols-3 gap-4 w-[400px] px-6">
+            {['Yes', 'Nearly', 'Not Yet'].map(option => (
+              <div key={option} className="flex justify-center ml-8">
+                <input
+                  type="checkbox"
+                  checked={value === option}
+                  onChange={() => handleFieldChange(section.name, field.name, option)}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+              </div>
+            ))}
           </div>
         </div>
       );
@@ -274,7 +205,7 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
       value,
       onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => 
         handleFieldChange(section.name, field.name, e.target.value),
-      className: `w-full p-2 border rounded ${error ? 'border-red-500' : 'border-gray-300'} 
+      className: `w-full p-2 border rounded ${error ? 'border-blue-500' : 'border-gray-300'} 
                  focus:outline-none focus:ring-2 focus:ring-blue-500`,
       required: field.isRequired
     };
@@ -282,16 +213,16 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
     switch (field.fieldType) {
       case 'text':
         return (
-          <div className="space-y-2">
+          <div className="space-y-0">
             <label 
               htmlFor={`field_${section.id}_${field.id}`}
               className="block text-sm font-medium text-gray-700"
             >
               {field.name}
-              {field.isRequired && <span className="text-red-500 ml-1">*</span>}
+              {field.isRequired && <span className="text-blue-500 ml-1">*</span>}
             </label>
             {field.description && (
-              <p className="text-sm text-gray-500 mb-1">{field.description}</p>
+              <p className="text-sm text-gray-500 mb-0">{field.description}</p>
             )}
             <input type="text" {...commonProps} />
           </div>
@@ -299,16 +230,16 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
       
       case 'textarea':
         return (
-          <div className="space-y-2">
+          <div className="space-y-0">
             <label 
               htmlFor={`field_${section.id}_${field.id}`}
               className="block text-sm font-medium text-gray-700"
             >
               {field.name}
-              {field.isRequired && <span className="text-red-500 ml-1">*</span>}
+              {field.isRequired && <span className="text-blue-500 ml-1">*</span>}
             </label>
             {field.description && (
-              <p className="text-sm text-gray-500 mb-1">{field.description}</p>
+              <p className="text-sm text-gray-500 mb-0">{field.description}</p>
             )}
             <textarea {...commonProps} className={`${commonProps.className} h-24`} />
           </div>
@@ -316,16 +247,16 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
       
       case 'number':
         return (
-          <div className="space-y-2">
+          <div className="space-y-0">
             <label 
               htmlFor={`field_${section.id}_${field.id}`}
               className="block text-sm font-medium text-gray-700"
             >
               {field.name}
-              {field.isRequired && <span className="text-red-500 ml-1">*</span>}
+              {field.isRequired && <span className="text-blue-500 ml-1">*</span>}
             </label>
             {field.description && (
-              <p className="text-sm text-gray-500 mb-1">{field.description}</p>
+              <p className="text-sm text-gray-500 mb-0">{field.description}</p>
             )}
             <input
               type="number"
@@ -338,16 +269,16 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
       
       case 'select':
         return (
-          <div className="space-y-2">
+          <div className="space-y-0">
             <label 
               htmlFor={`field_${section.id}_${field.id}`}
               className="block text-sm font-medium text-gray-700"
             >
               {field.name}
-              {field.isRequired && <span className="text-red-500 ml-1">*</span>}
+              {field.isRequired && <span className="text-blue-500 ml-1">*</span>}
             </label>
             {field.description && (
-              <p className="text-sm text-gray-500 mb-1">{field.description}</p>
+              <p className="text-sm text-gray-500 mb-0">{field.description}</p>
             )}
             <select {...commonProps}>
               <option value="">Select an option</option>
@@ -360,16 +291,16 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
       
       case 'rating':
         return (
-          <div className="space-y-2">
+          <div className="space-y-0">
             <label 
               htmlFor={`field_${section.id}_${field.id}`}
               className="block text-sm font-medium text-gray-700"
             >
               {field.name}
-              {field.isRequired && <span className="text-red-500 ml-1">*</span>}
+              {field.isRequired && <span className="text-blue-500 ml-1">*</span>}
             </label>
             {field.description && (
-              <p className="text-sm text-gray-500 mb-1">{field.description}</p>
+              <p className="text-sm text-gray-500 mb-0">{field.description}</p>
             )}
             <select {...commonProps}>
               <option value="">Select rating</option>
@@ -389,13 +320,41 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>{initialData ? 'Edit Report' : 'Create Report'}</CardTitle>
-        <div className="text-sm text-gray-600">
-          <div>Student: {studentName}</div>
-          <div>Current Group: {groupName}</div>
+      <CardHeader className="text-center border-b pb-6">
+        <CardTitle className="text-2xl font-bold">
+          {initialData ? 'Edit Report' : 'Create Report'}
+        </CardTitle>
+        <div className="mt-4 grid grid-cols-2 gap-4 text-left">
+          <div>
+            <span className="font-semibold">Student: </span>
+            {studentName}
+          </div>
+          <div>
+            <span className="font-semibold">Current Group: </span>
+            {groupName}
+          </div>
+        </div>
+        
+        <div className="mt-3 p-2 rounded-lg"> 
+          <div className="w-full mx-auto flex justify-end">
+            <div className="grid grid-cols-3 text-center gap-4">
+              <div className="flex flex-col items-center space-y-2">
+                <div className="h-4"></div>
+                <div>Yes</div>
+              </div>
+              <div className="flex flex-col items-center space-y-2">
+                <div className="h-4"></div>
+                <div>Nearly</div>
+              </div>
+              <div className="flex flex-col items-center space-y-2">
+                <div className="h-4"></div>
+                <div>Not Yet</div>
+              </div>
+            </div>
+          </div>
         </div>
       </CardHeader>
+
       <CardContent>
         {errors.length > 0 && (
           <Alert variant="destructive" className="mb-4">
@@ -409,13 +368,20 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
           </Alert>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-0">
           {template.sections
             .sort((a, b) => a.order - b.order)
             .map((section) => (
-              <div key={section.id} className="space-y-4">
-                <h3 className="font-semibold text-lg border-b pb-2">{section.name}</h3>
-                <div className="space-y-4">
+              <div key={section.id} className="mb-0">
+                <div className="flex items-center">
+                  <div className="bg-blue-500 text-white text-sm font-bold py-1 px-3 rounded-md">
+                    {section.name}
+                  </div>
+                  <div className="flex-1 ml-4">
+                    <div className="h-0.5 bg-blue-500"></div>
+                  </div>
+                </div>
+                <div className="mt-1 space-y-0">
                   {section.fields
                     .sort((a, b) => a.order - b.order)
                     .map((field) => (
@@ -423,7 +389,7 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
                         {renderField(section, field)}
                         {touched[section.name]?.[field.name] && 
                          validateField(section, field) && (
-                          <p className="text-sm text-red-500 mt-1">
+                          <p className="text-sm text-blue-500 mt-1">
                             {validateField(section, field)}
                           </p>
                         )}
@@ -456,7 +422,7 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
             </select>
           </div>
 
-          <div className="flex justify-end space-x-4 mt-6">
+          <div className="flex justify-end space-x-4 mt-4">
             <button
               type="button"
               onClick={onCancel}

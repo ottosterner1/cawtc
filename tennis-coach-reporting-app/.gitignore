@@ -19,3 +19,6 @@ venv/
 node_modules/
 .vite/
 migrations/
+test_*
+coordinate*
+instance/

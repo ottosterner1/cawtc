@@ -693,17 +693,25 @@ def report_operations(report_id):
         return jsonify({'error': 'Permission denied'}), 403
 
     if request.method == 'GET':
+        print(f"Report content: {report.content}")  # Debug log
+        print(f"Report recommended_group_id: {report.recommended_group_id}")  # Debug log
+        
         # Get the template associated with this report
         template = report.template
+
+        # Normalize the report content if needed
+        report_content = report.content
+        if isinstance(report_content, dict) and 'content' in report_content:
+            report_content = report_content['content']
 
         # Serialize the report data
         report_data = {
             'id': report.id,
             'studentName': report.student.name,
             'groupName': report.tennis_group.name,
-            'recommendedGroupId': report.recommended_group_id,  # Make sure this is included
+            'content': report_content,
+            'recommendedGroupId': report.recommended_group_id,
             'submissionDate': report.date.isoformat() if report.date else None,
-            'content': report.content,
             'canEdit': current_user.is_admin or report.coach_id == current_user.id
         }
 
@@ -732,15 +740,14 @@ def report_operations(report_id):
             'report': report_data,
             'template': template_data
         })
-        
+
     elif request.method == 'PUT':
         try:
             data = request.get_json()
-            
             if not data:
                 return jsonify({'error': 'No data provided'}), 400
 
-            # Update report content
+            # Update report content - should just be the section data
             report.content = data.get('content', {})
             
             # Update recommended group
@@ -1495,11 +1502,9 @@ def submit_report(player_id):
         
     try:
         data = request.get_json()
-        print("Received data:", data)  # Debug log
         
         # Extract and validate recommendedGroupId
         recommended_group_id = data.get('recommendedGroupId')
-        print("Recommended group ID:", recommended_group_id)  # Debug log
         
         if not recommended_group_id:
             return jsonify({'error': 'Recommended group is required'}), 400
@@ -1513,7 +1518,7 @@ def submit_report(player_id):
         if not recommended_group:
             return jsonify({'error': 'Invalid recommended group'}), 400
 
-        # Create report with the content and recommendedGroupId
+        # Create report with simplified content structure
         report = Report(
             student_id=player.student_id,
             coach_id=current_user.id,
@@ -1521,7 +1526,7 @@ def submit_report(player_id):
             teaching_period_id=player.teaching_period_id,
             programme_player_id=player.id,
             template_id=data['template_id'],
-            content=data['content'],  # Note: this should now be the correct content structure
+            content=data['content'],  # Just the section data
             recommended_group_id=recommended_group_id,
             date=datetime.utcnow()
         )

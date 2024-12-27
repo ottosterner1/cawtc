@@ -139,10 +139,9 @@ const EditReportApp: React.FC = () => {
   }
 
   // Structure the form data to match what DynamicReportForm expects
-  const initialFormData: Record<string, Record<string, any>> = {
-    ...report.content,
-    recommendedGroupId: { value: report.recommendedGroupId },
-    template_id: { value: template.id }
+  const initialFormData = {
+    content: report.content, // Ensure this is `Record<string, Record<string, string>>`
+    recommendedGroupId: report.recommendedGroupId, // Ensure this is a number
   };
 
   console.log('Initial form data:', initialFormData); // Debug log
