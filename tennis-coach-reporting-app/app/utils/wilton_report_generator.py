@@ -1,128 +1,143 @@
+from flask import current_app
+from app import create_app, db
+from app.models import Report, TeachingPeriod
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.utils import simpleSplit
 from io import BytesIO
 import os
+import json
+from datetime import datetime
 
-class WiltonReportGenerator:
-    def __init__(self, template_path):
-        """Initialize the report generator with the template path."""
-        self.template_path = template_path
-        
-        # Define coordinates for each field (x, y) for both pages
-        self.coordinates = {
-            # Page 1 coordinates (front page)
-            'page1': {
-                'player_name': (250, 205), 
-                'coach_name': (250, 162), 
-                'term': (250, 127),   
-                'group': (400, 193),
-            },
+class EnhancedWiltonReportGenerator:
+    def __init__(self, config_path):
+        """Initialize the report generator with configuration."""
+        print(f"Loading config from: {config_path}")
+        if not os.path.exists(config_path):
+            raise FileNotFoundError(
+                f"Config file not found at: {config_path}\n"
+                f"Current directory: {os.getcwd()}\n"
+                f"Directory contents: {os.listdir(os.path.dirname(config_path))}"
+            )
             
-           # Page 2 coordinates (report card)
-            'page2': {
-                # Section coordinates with their checkboxes
-                'sections': {
-                    'RULES OF TENNIS': {
-                        'start_y': 575,
-                        'spacing': 14,
-                        'yes_x': 385,
-                        'nearly_x': 405,
-                        'not_yet_x': 425
-                    },
-                    'RACKET SKILLS': {
-                        'start_y': 530,
-                        'spacing': 14,
-                        'yes_x': 385,
-                        'nearly_x': 405,
-                        'not_yet_x': 425
-                    },
-                    'THROWING AND CATCHING SKILLS': {
-                        'start_y': 490,
-                        'spacing': 14,
-                        'yes_x': 385,
-                        'nearly_x': 405,
-                        'not_yet_x': 425
-                    },
-                    'GROUNDSTROKES': {
-                        'start_y': 445,
-                        'spacing': 14,
-                        'yes_x': 385,
-                        'nearly_x': 405,
-                        'not_yet_x': 425
-                    },
-                    'SERVE': {
-                        'start_y': 330,
-                        'spacing': 14,
-                        'yes_x': 385,
-                        'nearly_x': 405,
-                        'not_yet_x': 425
-                    },
-                    'RALLYING': {
-                        'start_y': 265,
-                        'spacing': 15,
-                        'yes_x': 385,
-                        'nearly_x': 405,
-                        'not_yet_x': 425
-                    },
-                    'COMPETITION': {
-                        'start_y': 175,
-                        'spacing': 15,
-                        'yes_x': 385,
-                        'nearly_x': 405,
-                        'not_yet_x': 425
-                    }
-                },
-
-                'group_recommendation': {
-                    'red_x': 338,
-                    'orange_x': 418,
-                    'y': 155
-                }
-            }
-        }
-
+        with open(config_path, 'r') as f:
+            self.config = json.load(f)
+            
+        # Register custom fonts
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        
+        # Get base directory for fonts
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        fonts_dir = os.path.join(base_dir, 'static', 'fonts')
+        
+        # Register handwriting font
+        try:
+            pdfmetrics.registerFont(TTFont('Handwriting', os.path.join(fonts_dir, 'caveat.ttf')))
+            self.font_name = 'Handwriting'
+        except:
+            print("Warning: Handwriting font not found, falling back to Helvetica")
+            self.font_name = 'Helvetica-Bold'
+            
+    def get_template_path(self, group_name):
+        """Get the correct template path based on group name."""
+        # Convert group name to lowercase and remove spaces for filename
+        template_name = f"wilton_{group_name.lower().replace(' ', '_')}_report.pdf"
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        return os.path.join(base_dir, 'app', 'static', 'pdf_templates', template_name)
+        
+    def get_group_config(self, group_name):
+        """Get the configuration for a specific group."""
+        if group_name not in self.config:
+            raise ValueError(f"No configuration found for group: {group_name}")
+        return self.config[group_name]
+        
     def draw_diagonal_text(self, c, text, x, y, angle=23):
-        """Draw text at a specified angle."""
+        """Draw text at a specified angle with handwriting style."""
         c.saveState()
         c.translate(x, y)
         c.rotate(angle)
-        c.setFont("Helvetica-BoldOblique", 12)  # Use a handwriting-style font
-        c.drawString(0, 0, text)
+        
+        # Set random slight variations for more natural look
+        from random import uniform
+        
+        # Base font size with slight variation
+        base_size = 14
+        font_size = base_size + uniform(-0.5, 0.5)
+        
+        c.setFont(self.font_name, font_size)
+        
+        # Add slight random rotation for each character
+        chars = list(text)
+        current_x = 0
+        for char in chars:
+            char_angle = uniform(-2, 2)  # Slight random rotation
+            c.saveState()
+            c.rotate(char_angle)
+            c.drawString(current_x, uniform(-0.5, 0.5), char)  # Slight vertical variation
+            c.restoreState()
+            current_x += c.stringWidth(char, self.font_name, font_size) * 0.95  # Slightly tighter spacing
+            
         c.restoreState()
 
     def draw_checkbox(self, canvas, x, y, checked=False, size=8):
-        """Draw a checkbox at the specified coordinates with a more handwritten-like tick."""
+        """Draw a more natural-looking checkbox tick."""
         if checked:
-            canvas.setStrokeColorRGB(0, 0, 0)  # Set stroke color to black
-            canvas.setLineWidth(1)  # Slightly reduce line width for a more hand-drawn feel
-            # Draw a tick mark (✓) with simple strokes
-            canvas.line(x - size/2, y - size/4, x - size/4, y - size/2)
-            canvas.line(x - size/4, y - size/2, x + size/2, y + size/2)
+            canvas.saveState()
+            
+            # Set up for more natural stroke
+            canvas.setStrokeColorRGB(0, 0, 0)
+            canvas.setLineWidth(0.8)  # Thinner line for more natural look
+            
+            # Create a more natural tick with curved lines
+            from reportlab.lib.colors import Color
+            tick_color = Color(0, 0, 0, alpha=0.8)  # Slightly transparent black
+            canvas.setStrokeColor(tick_color)
+            
+            # Draw curved tick using bezier curves
+            p = canvas.beginPath()
+            p.moveTo(x - size/2, y - size/4)
+            p.curveTo(x - size/3, y - size/3,    # control point 1
+                     x - size/4, y - size/2,      # control point 2
+                     x - size/6, y - size/2)      # end point of first curve
+            
+            p.curveTo(x, y - size/3,             # control point 1
+                     x + size/3, y + size/3,      # control point 2
+                     x + size/2, y + size/2)      # end point
+            
+            canvas.drawPath(p)
+            canvas.restoreState()
 
-    def generate_overlay(self, data, page_num):
+    def generate_page_overlay(self, data, config, page_num):
         """Generate a single page overlay."""
         packet = BytesIO()
         c = canvas.Canvas(packet, pagesize=A4)
-        c.setFont("Helvetica-BoldOblique", 12)  # Apply the handwritten font
+        c.setFont("Helvetica-BoldOblique", 12)
         
         if page_num == 1:
             # Front page - add diagonal text fields
-            coords = self.coordinates['page1']
+            coords = config.get('page1', {})
             
-            # Draw each text field at 45 degrees
-            self.draw_diagonal_text(c, data['player_name'], coords['player_name'][0], coords['player_name'][1])
-            self.draw_diagonal_text(c, data['coach_name'], coords['coach_name'][0], coords['coach_name'][1])
-            self.draw_diagonal_text(c, data['term'], coords['term'][0], coords['term'][1])
-            self.draw_diagonal_text(c, data['group'], coords['group'][0], coords['group'][1])
+            # Only draw fields that exist in both config and data
+            field_mappings = {
+                'player_name': 'player_name',
+                'coach_name': 'coach_name',
+                'term': 'term',
+                'group': 'group'
+            }
+            
+            for field, data_key in field_mappings.items():
+                if field in coords and data_key in data:
+                    self.draw_diagonal_text(c, data[data_key], 
+                                         coords[field][0], 
+                                         coords[field][1])
             
         elif page_num == 2:
-            # Report card page - add checkboxes
-            sections = self.coordinates['page2']['sections']
-            content = data['content']
+            # Report card page - add checkboxes only if sections exist
+            sections = config.get('page2', {}).get('sections', {})
+            content = data.get('content', {})
             
-            # Process each section
+            # Process each section that exists in both config and content
             for section_name, section_coords in sections.items():
                 if section_name in content:
                     y_pos = section_coords['start_y']
@@ -137,21 +152,25 @@ class WiltonReportGenerator:
                             self.draw_checkbox(c, section_coords['not_yet_x'], y_pos, True)
                         y_pos -= section_coords['spacing']
             
-            # Add group recommendation checkbox
-            rec_coords = self.coordinates['page2']['group_recommendation']
-            if data['group_recommendation'] == 'Red':
-                self.draw_checkbox(c, rec_coords['red_x'], rec_coords['y'], True)
-            elif data['group_recommendation'] == 'Orange':
-                self.draw_checkbox(c, rec_coords['orange_x'], rec_coords['y'], True)
+            # Add group recommendation checkbox only if it exists in config
+            rec_coords = config.get('page2', {}).get('group_recommendation')
+            if rec_coords and 'group_recommendation' in data:
+                if data['group_recommendation'] == 'Red' and 'red_x' in rec_coords:
+                    self.draw_checkbox(c, rec_coords['red_x'], rec_coords['y'], True)
+                elif data['group_recommendation'] == 'Orange' and 'orange_x' in rec_coords:
+                    self.draw_checkbox(c, rec_coords['orange_x'], rec_coords['y'], True)
         
         c.save()
         packet.seek(0)
         return PdfReader(packet)
 
-    def generate_report(self, output_path, data):
+    def generate_report(self, template_path, output_path, data):
         """Generate a filled report PDF."""
+        # Get group configuration
+        group_config = self.get_group_config(data['group'])
+        
         # Read the template
-        template = PdfReader(open(self.template_path, "rb"))
+        template = PdfReader(open(template_path, "rb"))
         output = PdfWriter()
         
         # Process each page
@@ -160,7 +179,7 @@ class WiltonReportGenerator:
             template_page = template.pages[page_num]
             
             # Generate and merge overlay
-            overlay = self.generate_overlay(data, page_num + 1)
+            overlay = self.generate_page_overlay(data, group_config, page_num + 1)
             template_page.merge_page(overlay.pages[0])
             
             # Add the merged page to output
@@ -174,18 +193,195 @@ class WiltonReportGenerator:
             output.write(output_file)
 
     @classmethod
-    def generate_report_from_db(cls, template_path, output_path, report_data):
-        """Generate a report from database data."""
-        # Transform database data into the format needed for report generation
-        data = {
-            'player_name': report_data.student.name,
-            'coach_name': report_data.coach.name,
-            'term': report_data.teaching_period.name,
-            'group': report_data.tennis_group.name,
-            'content': report_data.content,
-            'group_recommendation': 'Red' if 'Red' in report_data.recommended_group.name else 'Orange' if 'Orange' in report_data.recommended_group.name else '' 
+    def batch_generate_reports(cls, period_id, config_path=None):
+        """Generate reports for all completed reports in a teaching period."""
+        if config_path is None:
+            # Fix path resolution to look in app/utils instead of utils
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            config_path = os.path.join(base_dir, 'utils', 'wilton_group_config.json')
+        
+        generator = cls(config_path)
+        
+        # Get all completed reports for the period with related data
+        reports = Report.query.filter_by(teaching_period_id=period_id)\
+            .join(Report.programme_player)\
+            .all()
+        
+        if not reports:
+            return {
+                'success': 0,
+                'errors': 0,
+                'error_details': ['No reports found for this period'],
+                'output_directory': None
+            }
+
+        # Get period name for the main folder
+        period_name = reports[0].teaching_period.name.replace(' ', '_').lower()
+        
+        # Set up base output directory
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        reports_dir = os.path.join(base_dir, 'instance', 'reports')
+        period_dir = os.path.join(reports_dir, f'reports-{period_name}')
+        
+        generated_reports = []
+        errors = []
+        
+        for report in reports:
+            try:
+                # Get template path for this group
+                template_path = generator.get_template_path(report.tennis_group.name)
+                
+                if not os.path.exists(template_path):
+                    errors.append(f"Template not found for group: {report.tennis_group.name}")
+                    continue
+                
+                # Create group-specific directory with time slot
+                group_name = report.tennis_group.name.replace(' ', '_').lower()
+                time_slot = ""
+                if report.programme_player and report.programme_player.group_time:
+                    time = report.programme_player.group_time
+                    time_slot = f"{time.start_time.strftime('%I%M%p')}_{time.end_time.strftime('%I%M%p')}".lower()
+                    group_dir = f"{group_name}_{time_slot}_reports"
+                else:
+                    group_dir = f"{group_name}_reports"
+                
+                full_group_dir = os.path.join(period_dir, group_dir)
+                os.makedirs(full_group_dir, exist_ok=True)
+                
+                # Prepare output path with standardized naming
+                student_name = report.student.name.replace(' ', '_').lower()
+                term_name = report.teaching_period.name.replace(' ', '_').lower()
+                filename = f"{student_name}_{group_name}_{term_name}_report.pdf"
+                output_path = os.path.join(full_group_dir, filename)
+                
+                # Prepare report data
+                data = {
+                    'player_name': report.student.name,
+                    'coach_name': report.coach.name,
+                    'term': report.teaching_period.name,
+                    'group': report.tennis_group.name,
+                    'content': report.content,
+                    'group_recommendation': 'Red' if 'Red' in report.recommended_group.name else 'Orange'
+                }
+                
+                # Generate the report
+                generator.generate_report(template_path, output_path, data)
+                generated_reports.append(output_path)
+                
+            except Exception as e:
+                errors.append(f"Error generating report for {report.student.name}: {str(e)}")
+                
+        return {
+            'success': len(generated_reports),
+            'errors': len(errors),
+            'error_details': errors,
+            'output_directory': output_path
         }
-        print(data)
+
+    @classmethod
+    def generate_single_report(cls, report_id, output_dir=None, config_path=None):
+        """Generate a report for a single specific report ID."""
+        if config_path is None:
+            # Fix path resolution to look in app/utils
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            config_path = os.path.join(base_dir, 'app', 'utils', 'wilton_group_config.json')
+            
+        generator = cls(config_path)
+        
+        # Get the report
+        report = Report.query.get(report_id)
+        if not report:
+            raise ValueError(f"Report not found with ID: {report_id}")
+            
+        # Set up output directory
+        if output_dir is None:
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            output_dir = os.path.join(base_dir, 'instance', 'generated_reports', timestamp)
+            
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Get template path
+        template_path = generator.get_template_path(report.tennis_group.name)
+        if not os.path.exists(template_path):
+            raise FileNotFoundError(f"Template not found for group: {report.tennis_group.name}")
+            
+        # Prepare output path
+        filename = f"{report.student.name}_{report.tennis_group.name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        output_path = os.path.join(output_dir, filename)
+        
+        # Prepare report data
+        data = {
+            'player_name': report.student.name,
+            'coach_name': report.coach.name,
+            'term': report.teaching_period.name,
+            'group': report.tennis_group.name,
+            'content': report.content,
+            'group_recommendation': 'Red' if 'Red' in report.recommended_group.name else 'Orange'
+        }
+        
         # Generate the report
-        generator = cls(template_path)
-        generator.generate_report(output_path, data)
+        generator.generate_report(template_path, output_path, data)
+        
+        return {
+            'success': True,
+            'output_path': output_path,
+            'report_data': data
+        }
+
+def main():
+    """Main function to test report generation"""
+    app = create_app()
+    
+    with app.app_context():
+        try:
+            # Check if a specific report ID was provided as command line argument
+            import sys
+            if len(sys.argv) > 1 and sys.argv[1].isdigit():
+                report_id = int(sys.argv[1])
+                print(f"\nGenerating single report for ID: {report_id}")
+                
+                try:
+                    result = EnhancedWiltonReportGenerator.generate_single_report(report_id)
+                    print("\nReport generation complete!")
+                    print(f"Report saved to: {result['output_path']}")
+                    print("\nReport details:")
+                    for key, value in result['report_data'].items():
+                        if key != 'content':  # Skip printing the full content
+                            print(f"{key}: {value}")
+                    
+                except Exception as e:
+                    print(f"Error generating report: {str(e)}")
+                    traceback.print_exc()
+                    return
+                    
+            else:
+                # Get the most recent teaching period
+                period = TeachingPeriod.query.order_by(TeachingPeriod.start_date.desc()).first()
+            if not period:
+                print("Error: No teaching periods found")
+                return
+                
+            print(f"\nGenerating reports for period: {period.name}")
+            
+            # Generate reports
+            results = EnhancedWiltonReportGenerator.batch_generate_reports(period.id)
+            
+            print(f"\nReport generation complete!")
+            print(f"Successfully generated: {results['success']} reports")
+            print(f"Errors encountered: {results['errors']}")
+            
+            if results['errors'] > 0:
+                print("\nError details:")
+                for error in results['error_details']:
+                    print(f"- {error}")
+                    
+            print(f"\nReports saved to: {results['output_directory']}")
+            
+        except Exception as e:
+            print(f"Error: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
+if __name__ == '__main__':
+    main()
