@@ -55,12 +55,19 @@ export interface TeachingPeriod {
   name: string;
 }
 
+interface GroupRecommendation {
+  from_group: string;
+  to_group: string;
+  count: number;
+}
+
 export interface DashboardMetrics {
   totalStudents: number;
   totalReports: number;
   reportCompletion: number;
   currentGroups: GroupProgress[];
   coachSummaries?: CoachSummary[];
+  groupRecommendations: GroupRecommendation[];
 }
 
 export interface GroupProgress {

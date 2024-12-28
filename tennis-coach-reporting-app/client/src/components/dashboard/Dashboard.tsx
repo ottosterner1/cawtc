@@ -194,6 +194,31 @@ const Dashboard: React.FC<DashboardProps> = () => {
                 ))}
               </div>
             </div>
+
+            {/* New Group Recommendations Section */}
+            <div>
+              <h3 className="text-lg font-medium mb-4">Group Recommendations</h3>
+              {stats.groupRecommendations && stats.groupRecommendations.length > 0 ? (
+                <div className="space-y-2">
+                  {/* Group and sum recommendations by target group */}
+                  {Object.entries(
+                    stats.groupRecommendations.reduce((acc, rec) => {
+                      acc[rec.to_group] = (acc[rec.to_group] || 0) + rec.count;
+                      return acc;
+                    }, {} as Record<string, number>)
+                  ).map(([group, count]) => (
+                    <div key={group} className="flex justify-between items-center p-2 bg-gray-50 rounded-lg">
+                      <span className="text-gray-900 font-medium">{group}</span>
+                      <span className="text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                        {count} {count === 1 ? 'player' : 'players'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-500">No recommendations for this period</p>
+              )}
+            </div>
           </div>
         </div>
       )}

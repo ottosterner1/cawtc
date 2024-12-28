@@ -407,6 +407,46 @@ def dashboard_stats():
                     'total_assigned': coach_players.count(),
                     'reports_completed': coach_reports.count()
                 })
+
+        # Get group recommendations
+        recommendations_query = db.session.query(
+            TennisGroup.name.label('from_group'),
+            func.count().label('count'),
+            Report.recommended_group_id
+        ).join(
+            ProgrammePlayers, Report.programme_player_id == ProgrammePlayers.id
+        ).join(
+            TennisGroup, ProgrammePlayers.group_id == TennisGroup.id
+        ).filter(
+            ProgrammePlayers.tennis_club_id == tennis_club_id,
+            Report.recommended_group_id.isnot(None)
+        )
+        
+        if selected_period_id:
+            recommendations_query = recommendations_query.filter(
+                Report.teaching_period_id == selected_period_id
+            )
+            
+        if not (current_user.is_admin or current_user.is_super_admin):
+            recommendations_query = recommendations_query.filter(
+                Report.coach_id == current_user.id
+            )
+            
+        recommendations_query = recommendations_query.group_by(
+            TennisGroup.name,
+            Report.recommended_group_id
+        ).all()
+        
+        # Process recommendations to include target group names
+        group_recommendations = []
+        for from_group, count, recommended_group_id in recommendations_query:
+            to_group = TennisGroup.query.get(recommended_group_id)
+            if to_group:
+                group_recommendations.append({
+                    'from_group': from_group,
+                    'to_group': to_group.name,
+                    'count': count
+                })
         
         response_data = {
             'periods': [{
@@ -422,7 +462,8 @@ def dashboard_stats():
                     'count': count,
                     'reports_completed': completed
                 } for name, count, completed in group_stats],
-                'coachSummaries': coach_summaries
+                'coachSummaries': coach_summaries,
+                'groupRecommendations': group_recommendations
             }
         }
         return jsonify(response_data)
@@ -438,7 +479,8 @@ def dashboard_stats():
                 'totalReports': 0,
                 'reportCompletion': 0,
                 'currentGroups': [],
-                'coachSummaries': None
+                'coachSummaries': None,
+                'groupRecommendations': []
             }
         }), 500
 
