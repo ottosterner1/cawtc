@@ -99,6 +99,7 @@ export interface ProgrammePlayer {
   report_submitted: boolean;
   report_id?: number;
   can_edit: boolean;
+  has_template: boolean;
 }
 
 export interface Group {

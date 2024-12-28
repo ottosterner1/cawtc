@@ -208,7 +208,6 @@ class EnhancedWiltonReportGenerator:
     def batch_generate_reports(cls, period_id, config_path=None):
         """Generate reports for all completed reports in a teaching period."""
         if config_path is None:
-            # Fix path resolution to look in app/utils instead of utils
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             config_path = os.path.join(base_dir, 'utils', 'wilton_group_config.json')
         
@@ -247,13 +246,15 @@ class EnhancedWiltonReportGenerator:
                     errors.append(f"Template not found for group: {report.tennis_group.name}")
                     continue
                 
-                # Create group-specific directory with time slot
+                # Create group-specific directory with time slot and day
                 group_name = report.tennis_group.name.replace(' ', '_').lower()
-                time_slot = ""
                 if report.programme_player and report.programme_player.group_time:
                     time = report.programme_player.group_time
-                    time_slot = f"{time.start_time.strftime('%I%M%p')}_{time.end_time.strftime('%I%M%p')}".lower()
-                    group_dir = f"{group_name}_{time_slot}_reports"
+                    # Format time as HHMM (e.g., 0100PM)
+                    start_time = time.start_time.strftime('%I%M%p').lower()
+                    end_time = time.end_time.strftime('%I%M%p').lower()
+                    day = time.day_of_week.value.lower()
+                    group_dir = f"{group_name}_{day}_{start_time}_{end_time}_reports"
                 else:
                     group_dir = f"{group_name}_reports"
                 
@@ -287,7 +288,7 @@ class EnhancedWiltonReportGenerator:
             'success': len(generated_reports),
             'errors': len(errors),
             'error_details': errors,
-            'output_directory': output_path
+            'output_directory': period_dir
         }
 
     @classmethod
