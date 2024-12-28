@@ -76,7 +76,7 @@ const ReportPreview: React.FC<ReportPreviewProps> = ({ report, template }) => {
               <h3 className="font-semibold text-lg border-b pb-2">{section.name}</h3>
               <div className="space-y-4">
                 {section.fields.map((field) => (
-                  <div key={field.name} className="space-y-1">
+                  <div key={field.name} className="space-y-0.5">
                     <div className="font-medium text-sm text-gray-700">
                       {field.name}
                     </div>

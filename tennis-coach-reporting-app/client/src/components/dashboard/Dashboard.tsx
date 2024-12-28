@@ -175,9 +175,9 @@ const Dashboard: React.FC<DashboardProps> = () => {
               </div>
             </div>
 
-            {/* Coach Performance */}
+            {/* Coach Reports Progress */}
             <div>
-              <h3 className="text-lg font-medium mb-4">Coach Performance</h3>
+              <h3 className="text-lg font-medium mb-4">Coach Report Progress</h3>
               <div className="space-y-2">
                 {stats.coachSummaries.map((coach) => (
                   <div key={coach.id} className="flex justify-between items-center">

@@ -93,3 +93,64 @@ export interface ProgrammePlayer {
   report_id?: number;
   can_edit: boolean;
 }
+
+export interface Group {
+  id: number;
+  name: string;
+}
+
+export interface FieldOption {
+  id: number;
+  name: string;
+  description?: string;
+  fieldType: 'text' | 'number' | 'select' | 'textarea' | 'rating' | 'progress';
+  isRequired: boolean;
+  options?: {
+    min?: number;
+    max?: number;
+    options?: string[];
+  };
+  order: number;
+}
+
+export interface Section {
+  id: number;
+  name: string;
+  order: number;
+  fields: FieldOption[];
+}
+
+export interface Template {
+  id: number;
+  name: string;
+  description: string;
+  sections: Section[];
+}
+
+export interface DynamicReportFormProps {
+  template: Template;
+  studentName: string;
+  groupName: string;
+  initialData?: {
+    content: Record<string, Record<string, string>>;
+    recommendedGroupId: number;
+    id?: number;
+    submissionDate?: string;
+    canEdit?: boolean;
+  };
+  onSubmit: (data: {
+    content: Record<string, Record<string, string>>;
+    recommendedGroupId: number;
+    template_id: number;
+  }) => Promise<void>;
+  onCancel: () => void;
+  isSubmitting?: boolean;
+}
+
+export interface ProgressOptionsProps {
+  value: string;
+  onChange: (value: string) => void;
+  error?: boolean;
+  isRequired?: boolean;
+  name: string;
+}
