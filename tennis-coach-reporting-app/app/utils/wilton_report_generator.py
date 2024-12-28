@@ -7,7 +7,12 @@ from reportlab.lib.pagesizes import A4
 from io import BytesIO
 import os
 import json
+import random
+from random import uniform
 from datetime import datetime
+from reportlab.lib.colors import Color
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 class EnhancedWiltonReportGenerator:
     def __init__(self, config_path):
@@ -22,11 +27,7 @@ class EnhancedWiltonReportGenerator:
             
         with open(config_path, 'r') as f:
             self.config = json.load(f)
-            
-        # Register custom fonts
-        from reportlab.pdfbase import pdfmetrics
-        from reportlab.pdfbase.ttfonts import TTFont
-        
+       
         # Get base directory for fonts
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         fonts_dir = os.path.join(base_dir, 'static', 'fonts')
@@ -58,9 +59,6 @@ class EnhancedWiltonReportGenerator:
         c.translate(x, y)
         c.rotate(angle)
         
-        # Set random slight variations for more natural look
-        from random import uniform
-        
         # Base font size with slight variation
         base_size = 14
         font_size = base_size + uniform(-0.5, 0.5)
@@ -81,31 +79,45 @@ class EnhancedWiltonReportGenerator:
         c.restoreState()
 
     def draw_checkbox(self, canvas, x, y, checked=False, size=8):
-        """Draw a more natural-looking checkbox tick."""
+        """Draw a more natural-looking checkbox tick with a handwriting style and debug font usage."""
         if checked:
             canvas.saveState()
+
+            # Debugging: Check and set the custom font
+            try:
+                canvas.setFont(self.font_name, size)
+            except Exception as e:
+                canvas.setFont('Helvetica', size)
+
+            # Handwritten-style tick path with minor randomness
             
-            # Set up for more natural stroke
-            canvas.setStrokeColorRGB(0, 0, 0)
-            canvas.setLineWidth(0.8)  # Thinner line for more natural look
-            
-            # Create a more natural tick with curved lines
-            from reportlab.lib.colors import Color
             tick_color = Color(0, 0, 0, alpha=0.8)  # Slightly transparent black
             canvas.setStrokeColor(tick_color)
-            
-            # Draw curved tick using bezier curves
+            canvas.setLineWidth(0.8)  # Thinner line for a more natural look
+
+            # Add randomness to mimic handwriting
+            def jitter(value, max_jitter=0.5):
+                return value + random.uniform(-max_jitter, max_jitter)
+
+            # Draw a tick path with irregularities
             p = canvas.beginPath()
-            p.moveTo(x - size/2, y - size/4)
-            p.curveTo(x - size/3, y - size/3,    # control point 1
-                     x - size/4, y - size/2,      # control point 2
-                     x - size/6, y - size/2)      # end point of first curve
-            
-            p.curveTo(x, y - size/3,             # control point 1
-                     x + size/3, y + size/3,      # control point 2
-                     x + size/2, y + size/2)      # end point
-            
+            p.moveTo(jitter(x - size / 2), jitter(y - size / 4))
+            p.curveTo(
+                jitter(x - size / 3), jitter(y - size / 3),  # Control point 1
+                jitter(x - size / 4), jitter(y - size / 2),  # Control point 2
+                jitter(x - size / 6), jitter(y - size / 2)   # End point of the first curve
+            )
+            p.curveTo(
+                jitter(x), jitter(y - size / 3),             # Control point 1
+                jitter(x + size / 3), jitter(y + size / 3),  # Control point 2
+                jitter(x + size / 2), jitter(y + size / 2)   # End point
+            )
             canvas.drawPath(p)
+
+            # Optionally, use a handwritten tick symbol
+            label_offset = size  # Offset for text next to the checkbox
+            canvas.drawString(x + label_offset, y, "✓")  # Ensure font is handwriting-style
+
             canvas.restoreState()
 
     def generate_page_overlay(self, data, config, page_num):
