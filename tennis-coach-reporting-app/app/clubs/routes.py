@@ -867,105 +867,107 @@ def bulk_upload_players():
         players_created = 0
         errors = []
         
-        # Process each row in the CSV
-        for index, row in df.iterrows():
-            try:
-                # Validate coach
-                coach_email = row['coach_email'].lower()
-                if coach_email not in coaches:
-                    errors.append(f"Row {index + 2}: Coach with email {coach_email} not found")
-                    continue
-
-                # Validate group
-                group_name = row['group_name'].lower()
-                if group_name not in groups:
-                    errors.append(f"Row {index + 2}: Group {row['group_name']} not found")
-                    continue
-
-                # Parse time values
+        # Start a new transaction
+        db.session.begin_nested()
+        
+        try:
+            # Process each row in the CSV
+            for index, row in df.iterrows():
                 try:
-                    start_time = datetime.strptime(row['start_time'], '%H:%M').time()
-                    end_time = datetime.strptime(row['end_time'], '%H:%M').time()
-                except ValueError:
-                    errors.append(f"Row {index + 2}: Invalid time format. Use HH:MM")
-                    continue
+                    # Validate coach
+                    coach_email = row['coach_email'].lower()
+                    if coach_email not in coaches:
+                        errors.append(f"Row {index + 2}: Coach with email {coach_email} not found")
+                        continue
 
-                # Find or create group time slot
-                try:
-                    day_of_week = DayOfWeek[row['day_of_week'].upper()]
-                except KeyError:
-                    errors.append(f"Row {index + 2}: Invalid day of week")
-                    continue
+                    # Validate group
+                    group_name = row['group_name'].lower()
+                    if group_name not in groups:
+                        errors.append(f"Row {index + 2}: Group {row['group_name']} not found")
+                        continue
 
-                group_time = TennisGroupTimes.query.filter_by(
-                    group_id=groups[group_name].id,
-                    day_of_week=day_of_week,
-                    start_time=start_time,
-                    end_time=end_time,
-                    tennis_club_id=club.id
-                ).first()
+                    # Parse time values
+                    try:
+                        start_time = datetime.strptime(row['start_time'], '%H:%M').time()
+                        end_time = datetime.strptime(row['end_time'], '%H:%M').time()
+                    except ValueError:
+                        errors.append(f"Row {index + 2}: Invalid time format. Use HH:MM")
+                        continue
 
-                if not group_time:
-                    errors.append(f"Row {index + 2}: Group time slot not found")
-                    continue
+                    # Find or create group time slot
+                    try:
+                        day_of_week = DayOfWeek[row['day_of_week'].upper()]
+                    except KeyError:
+                        errors.append(f"Row {index + 2}: Invalid day of week")
+                        continue
 
-                # Parse date of birth
-                try:
-                    date_of_birth = parse_date(row['date_of_birth'])
-                except ValueError as e:
-                    errors.append(f"Row {index + 2}: Invalid date format - {str(e)}")
-                    continue
+                    group_time = TennisGroupTimes.query.filter_by(
+                        group_id=groups[group_name].id,
+                        day_of_week=day_of_week,
+                        start_time=start_time,
+                        end_time=end_time,
+                        tennis_club_id=club.id
+                    ).first()
 
-                # Get or create student
-                student = Student.query.filter_by(
-                    name=row['student_name'],
-                    tennis_club_id=club.id
-                ).first()
+                    if not group_time:
+                        errors.append(f"Row {index + 2}: Group time slot not found")
+                        continue
 
-                if not student:
-                    student = Student(
+                    # Get or create student with explicit flush
+                    student = Student.query.filter_by(
                         name=row['student_name'],
-                        date_of_birth=date_of_birth,
-                        contact_email=row['contact_email'],
+                        tennis_club_id=club.id
+                    ).first()
+
+                    if not student:
+                        student = Student(
+                            name=row['student_name'],
+                            date_of_birth=parse_date(row['date_of_birth']),
+                            contact_email=row['contact_email'],
+                            tennis_club_id=club.id
+                        )
+                        db.session.add(student)
+                        db.session.flush()  # Explicitly flush to get student.id
+                        students_created += 1
+
+                    # Create programme player
+                    player = ProgrammePlayers(
+                        student_id=student.id,
+                        coach_id=coaches[coach_email].id,
+                        group_id=groups[group_name].id,
+                        group_time_id=group_time.id,
+                        teaching_period_id=teaching_period.id,
                         tennis_club_id=club.id
                     )
-                    db.session.add(student)
-                    students_created += 1
+                    db.session.add(player)
+                    players_created += 1
 
-                # Create programme player
-                player = ProgrammePlayers(
-                    student_id=student.id,
-                    coach_id=coaches[coach_email].id,
-                    group_id=groups[group_name].id,
-                    group_time_id=group_time.id,
-                    teaching_period_id=teaching_period.id,
-                    tennis_club_id=club.id
-                )
-                db.session.add(player)
-                players_created += 1
+                except Exception as e:
+                    current_app.logger.error(f"Error processing row {index + 2}: {str(e)}")
+                    errors.append(f"Row {index + 2}: {str(e)}")
+                    raise  # Re-raise to trigger rollback
 
-            except Exception as e:
-                current_app.logger.error(f"Error processing row {index + 2}: {str(e)}")
-                errors.append(f"Row {index + 2}: {str(e)}")
-                continue
+            if errors:
+                db.session.rollback()
+                return jsonify({
+                    'error': 'Upload failed',
+                    'details': errors
+                }), 400
 
-        # Handle results
-        if errors:
-            db.session.rollback()
-            return jsonify({
-                'error': 'Upload failed',
-                'details': errors
-            }), 400
-
-        # Commit successful changes
-        db.session.commit()
+            # If we get here, everything worked
+            db.session.commit()
             
-        return jsonify({
-            'message': 'Upload successful',
-            'students_created': students_created,
-            'players_created': players_created
-        })
-        
+            return jsonify({
+                'message': 'Upload successful',
+                'students_created': students_created,
+                'players_created': players_created
+            })
+            
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Bulk upload error: {str(e)}")
+            return jsonify({'error': str(e)}), 400
+            
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Bulk upload error: {str(e)}")

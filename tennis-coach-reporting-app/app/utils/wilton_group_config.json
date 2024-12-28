@@ -60,7 +60,7 @@
     },
     "Orange 1": {
         "page1": {
-            "player_name": [250, 206],
+            "player_name": [250, 205],
             "coach_name": [250, 162],
             "term": [250, 128]
         },
@@ -78,7 +78,7 @@
     },
     "Orange 3": {
         "page1": {
-            "player_name": [250, 206],
+            "player_name": [250, 205],
             "coach_name": [250, 162],
             "term": [250, 128]
         },
@@ -96,7 +96,7 @@
     },
     "Green 1": {
         "page1": {
-            "player_name": [250, 206],
+            "player_name": [250, 205],
             "coach_name": [250, 162],
             "term": [250, 128]
         },
@@ -114,7 +114,7 @@
     },
     "Green 3": {
         "page1": {
-            "player_name": [250, 206],
+            "player_name": [250, 205],
             "coach_name": [250, 162],
             "term": [250, 128]
         },
@@ -132,7 +132,7 @@
     },
     "Yellow 1": {
         "page1": {
-            "player_name": [250, 206],
+            "player_name": [250, 205],
             "coach_name": [250, 162],
             "term": [250, 128]
         },
@@ -150,7 +150,7 @@
     },
     "Yellow 2": {
         "page1": {
-            "player_name": [250, 206],
+            "player_name": [250, 205],
             "coach_name": [250, 162],
             "term": [250, 128],
             "group": [400, 193]
@@ -170,7 +170,7 @@
     },
     "Yellow 3": {
         "page1": {
-            "player_name": [250, 206],
+            "player_name": [250, 205],
             "coach_name": [250, 162],
             "term": [250, 128],
             "group": [400, 193]
@@ -190,7 +190,7 @@
     },
     "Purple Tots": {
         "page1": {
-            "player_name": [250, 206],
+            "player_name": [250, 205],
             "coach_name": [250, 162],
             "term": [250, 128]
         },

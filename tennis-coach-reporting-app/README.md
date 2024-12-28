@@ -19,7 +19,7 @@ pyinstaller --onefile --windowed \
     src/contact_details_registers.py
 
 ## Directory Structure Coaching app
-tree -I "__pycache__|venv|node_modules|migrations"
+tree -I "__pycache__|venv|node_modules|migrations|instance"
 flask run --host=localhost --port 3000
 
 

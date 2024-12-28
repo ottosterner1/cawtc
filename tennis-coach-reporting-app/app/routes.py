@@ -1,3 +1,4 @@
+import os
 import traceback
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, jsonify
 from flask_login import login_user, login_required, logout_user, current_user
@@ -345,12 +346,14 @@ def dashboard_stats():
             
         total_students = players_query.count()
         
-        # Get reports - filter by coach if not admin
+        # Get reports - filter by programme player's coach if not admin
         reports_query = Report.query.join(ProgrammePlayers).filter(
             ProgrammePlayers.tennis_club_id == tennis_club_id
         )
         if not (current_user.is_admin or current_user.is_super_admin):
-            reports_query = reports_query.filter(Report.coach_id == current_user.id)
+            reports_query = reports_query.filter(
+                ProgrammePlayers.coach_id == current_user.id  # Filter by the coach of the programme player
+            )
             
         if selected_period_id:
             reports_query = reports_query.filter(Report.teaching_period_id == selected_period_id)
@@ -399,13 +402,53 @@ def dashboard_stats():
             
             for coach in coaches:
                 coach_players = players_query.filter_by(coach_id=coach.id)
-                coach_reports = reports_query.filter_by(coach_id=coach.id)
+                coach_reports = reports_query.filter(ProgrammePlayers.coach_id == coach.id)  # Match ProgrammePlayer's coach
                 
                 coach_summaries.append({
                     'id': coach.id,
                     'name': coach.name,
                     'total_assigned': coach_players.count(),
                     'reports_completed': coach_reports.count()
+                })
+
+        # Get group recommendations
+        recommendations_query = db.session.query(
+            TennisGroup.name.label('from_group'),
+            func.count().label('count'),
+            Report.recommended_group_id
+        ).join(
+            ProgrammePlayers, Report.programme_player_id == ProgrammePlayers.id
+        ).join(
+            TennisGroup, ProgrammePlayers.group_id == TennisGroup.id
+        ).filter(
+            ProgrammePlayers.tennis_club_id == tennis_club_id,
+            Report.recommended_group_id.isnot(None)
+        )
+        
+        if selected_period_id:
+            recommendations_query = recommendations_query.filter(
+                Report.teaching_period_id == selected_period_id
+            )
+            
+        if not (current_user.is_admin or current_user.is_super_admin):
+            recommendations_query = recommendations_query.filter(
+                ProgrammePlayers.coach_id == current_user.id
+            )
+            
+        recommendations_query = recommendations_query.group_by(
+            TennisGroup.name,
+            Report.recommended_group_id
+        ).all()
+        
+        # Process recommendations to include target group names
+        group_recommendations = []
+        for from_group, count, recommended_group_id in recommendations_query:
+            to_group = TennisGroup.query.get(recommended_group_id)
+            if to_group:
+                group_recommendations.append({
+                    'from_group': from_group,
+                    'to_group': to_group.name,
+                    'count': count
                 })
         
         response_data = {
@@ -422,7 +465,8 @@ def dashboard_stats():
                     'count': count,
                     'reports_completed': completed
                 } for name, count, completed in group_stats],
-                'coachSummaries': coach_summaries
+                'coachSummaries': coach_summaries,
+                'groupRecommendations': group_recommendations
             }
         }
         return jsonify(response_data)
@@ -438,9 +482,11 @@ def dashboard_stats():
                 'totalReports': 0,
                 'reportCompletion': 0,
                 'currentGroups': [],
-                'coachSummaries': None
+                'coachSummaries': None,
+                'groupRecommendations': []
             }
         }), 500
+
 
 @main.route('/api/programme-players')
 @login_required
@@ -458,10 +504,6 @@ def programme_players():
         if selected_period_id:
             query = query.filter_by(teaching_period_id=selected_period_id)
         
-        # For regular coaches, only show players they're assigned to
-        if not (current_user.is_admin or current_user.is_super_admin):
-            query = query.filter_by(coach_id=current_user.id)
-            
         players = query.join(
             Student, ProgrammePlayers.student_id == Student.id
         ).join(
@@ -472,6 +514,11 @@ def programme_players():
             Report, and_(
                 ProgrammePlayers.id == Report.programme_player_id,
                 ProgrammePlayers.teaching_period_id == Report.teaching_period_id
+            )
+        ).outerjoin(  # Add this join
+            GroupTemplate, and_(
+                TennisGroup.id == GroupTemplate.group_id,
+                GroupTemplate.is_active == True
             )
         ).with_entities(
             ProgrammePlayers.id,
@@ -484,7 +531,20 @@ def programme_players():
             TennisGroupTimes.end_time,
             Report.id.label('report_id'),
             Report.coach_id,
-            ProgrammePlayers.coach_id.label('assigned_coach_id')
+            ProgrammePlayers.coach_id.label('assigned_coach_id'),
+            func.count(GroupTemplate.id).label('template_count')  # Add this
+        ).group_by(
+            ProgrammePlayers.id,
+            Student.name,
+            TennisGroup.name,
+            TennisGroup.id,
+            ProgrammePlayers.group_time_id,
+            TennisGroupTimes.day_of_week,
+            TennisGroupTimes.start_time,
+            TennisGroupTimes.end_time,
+            Report.id,
+            Report.coach_id,
+            ProgrammePlayers.coach_id
         ).all()
         
         return jsonify([{
@@ -502,7 +562,8 @@ def programme_players():
             'report_id': player.report_id,
             'can_edit': current_user.is_admin or current_user.is_super_admin or 
                        player.coach_id == current_user.id or 
-                       player.assigned_coach_id == current_user.id
+                       player.assigned_coach_id == current_user.id,
+            'has_template': player.template_count > 0  # Add this
         } for player in players])
         
     except Exception as e:
@@ -768,48 +829,121 @@ def report_operations(report_id):
             print(f"Error updating report: {str(e)}")
             return jsonify({'error': str(e)}), 500
 
-@main.route('/download_reports')
+@main.route('/api/reports/download-all/<int:period_id>', methods=['GET'])
 @login_required
-def download_reports():
-    """Download all reports for the current term as a ZIP file"""
-    selected_period_id = request.args.get('teaching_period_id', type=int)
-    selected_group_id = request.args.get('group_id', type=int)
+@admin_required
+def download_all_reports(period_id):
+    """Download all reports for a teaching period"""
+    current_app.logger.info(f"Starting download_all_reports for period_id: {period_id}")
     
-    # Query reports based on filters
-    query = Report.query.filter_by(coach_id=current_user.id)
-    if selected_period_id:
-        query = query.filter_by(teaching_period_id=selected_period_id)
-    if selected_group_id:
-        query = query.filter_by(group_id=selected_group_id)
-    
-    reports = query.all()
-    
-    if not reports:
-        flash('No reports found for the selected criteria')
-        return redirect(url_for('main.dashboard'))
-    
-    # Create a ZIP file in memory
-    memory_file = BytesIO()
-    with zipfile.ZipFile(memory_file, 'w') as zf:
-        for report in reports:
-            # Create PDF for each report
-            pdf_buffer = BytesIO()
-            create_single_report_pdf(report, pdf_buffer)
+    try:
+        # Verify period belongs to user's club
+        period = TeachingPeriod.query.filter_by(
+            id=period_id,
+            tennis_club_id=current_user.tennis_club_id
+        ).first_or_404()
+        current_app.logger.info(f"Found period: {period.name}")
+        
+        # Get the club name and set up directories
+        club_name = current_user.tennis_club.name
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        instance_dir = os.path.join(base_dir, 'app', 'instance', 'reports')
+        
+        # Create period-specific directory path
+        period_name = period.name.replace(' ', '_').lower()
+        period_dir = os.path.join(instance_dir, f'reports-{period_name}')
+        
+        # Clear existing reports directory if it exists
+        if os.path.exists(period_dir):
+            current_app.logger.info(f"Clearing existing reports directory: {period_dir}")
+            import shutil
+            shutil.rmtree(period_dir)
+        
+        # Create fresh directory
+        os.makedirs(instance_dir, exist_ok=True)
+        current_app.logger.info(f"Created fresh instance directory")
+        
+        # Choose generator based on club name
+        if 'wilton' in club_name.lower():
+            current_app.logger.info("Using Wilton generator")
+            from app.utils.wilton_report_generator import EnhancedWiltonReportGenerator
             
-            # Add PDF to ZIP with a meaningful filename
-            filename = f"{report.student.name}_{report.teaching_period.name}_{report.tennis_group.name}.pdf".replace(' ', '_')
-            zf.writestr(filename, pdf_buffer.getvalue())
-    
-    memory_file.seek(0)
-    
-    # Generate timestamp for the zip filename
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    
-    response = make_response(memory_file.getvalue())
-    response.headers['Content-Type'] = 'application/zip'
-    response.headers['Content-Disposition'] = f'attachment; filename=tennis_reports_{timestamp}.zip'
-    
-    return response
+            config_path = os.path.join(base_dir, 'app', 'utils', 'wilton_group_config.json')
+            generator = EnhancedWiltonReportGenerator(config_path)
+            result = generator.batch_generate_reports(period_id)
+            
+            # Get the period-specific directory (generated by the report generator)
+            reports_dir = period_dir
+        else:
+            from app.utils.report_generator import batch_generate_reports
+            result = batch_generate_reports(period_id)
+            reports_dir = result.get('output_directory')
+            
+        current_app.logger.info(f"Reports directory: {reports_dir}")
+            
+        if result.get('success', 0) == 0:
+            current_app.logger.error(f"No reports generated. Details: {result.get('error_details', [])}")
+            return jsonify({
+                'error': 'No reports were generated',
+                'details': result.get('error_details', [])
+            }), 400
+            
+        # Verify the reports directory exists
+        if not os.path.exists(reports_dir):
+            current_app.logger.error(f"Reports directory not found at: {reports_dir}")
+            return jsonify({'error': f'No reports were found after generation'}), 500
+            
+        # Create a ZIP file containing all generated reports
+        memory_file = BytesIO()
+        with zipfile.ZipFile(memory_file, 'w') as zf:
+            pdf_count = 0
+            current_app.logger.info(f"Walking directory: {reports_dir}")
+            
+            for root, dirs, files in os.walk(reports_dir):
+                current_app.logger.info(f"Scanning directory: {root}")
+                current_app.logger.info(f"Found directories: {dirs}")
+                current_app.logger.info(f"Found files: {files}")
+                
+                for file in files:
+                    if file.endswith('.pdf'):
+                        file_path = os.path.join(root, file)
+                        # Preserve directory structure relative to reports_dir
+                        rel_path = os.path.relpath(file_path, reports_dir)
+                        try:
+                            zf.write(file_path, rel_path)
+                            pdf_count += 1
+                            current_app.logger.info(f"Added file to ZIP: {rel_path}")
+                        except Exception as e:
+                            current_app.logger.error(f"Error adding file to ZIP {file_path}: {str(e)}")
+                            
+            if pdf_count == 0:
+                current_app.logger.error("No PDF files were found to add to ZIP")
+                return jsonify({'error': 'No PDF files were generated'}), 400
+                
+        memory_file.seek(0)
+        
+        # Format filename
+        formatted_club_name = club_name.lower().replace(' ', '_')
+        formatted_term = period.name.lower().replace(' ', '_')
+        filename = f"reports_{formatted_club_name}_{formatted_term}.zip"
+        
+        current_app.logger.info(f"Sending ZIP file with {pdf_count} PDFs: {filename}")
+        
+        response = send_file(
+            memory_file,
+            mimetype='application/zip',
+            as_attachment=True,
+            download_name=filename
+        )
+        
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        current_app.logger.info("Successfully prepared response")
+        return response
+        
+    except Exception as e:
+        current_app.logger.error(f"Error generating reports: {str(e)}")
+        current_app.logger.error(traceback.format_exc())
+        return jsonify({'error': str(e)}), 500
 
 @main.route('/download_single_report/<int:report_id>')
 @login_required
