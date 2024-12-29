@@ -11,6 +11,8 @@ import type {
 const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
   template,
   studentName,
+  dateOfBirth,
+  age,
   groupName,
   initialData,
   onSubmit,
@@ -320,20 +322,32 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
 
   return (
     <Card>
-      <CardHeader className="text-center border-b pb-6">
-        <CardTitle className="text-2xl font-bold">
-          {initialData ? 'Edit Report' : 'Create Report'}
-        </CardTitle>
-        <div className="mt-4 grid grid-cols-2 gap-4 text-left">
-          <div>
-            <span className="font-semibold">Student: </span>
-            {studentName}
+    <CardHeader className="text-center border-b pb-6">
+      <CardTitle className="text-2xl font-bold">
+        {initialData ? 'Edit Report' : 'Create Report'}
+      </CardTitle>
+      <div className="mt-4 space-y-2">
+        <div className="grid grid-cols-2 gap-4 text-left">
+          <div className="flex items-center">
+            <span className="font-semibold w-32">Player:</span>
+            <span>{studentName}</span>
           </div>
-          <div>
-            <span className="font-semibold">Current Group: </span>
-            {groupName}
+          <div className="flex items-center">
+            <span className="font-semibold w-32">Current Group:</span>
+            <span>{groupName}</span>
           </div>
         </div>
+        <div className="grid grid-cols-2 gap-4 text-left">
+          <div className="flex items-center">
+            <span className="font-semibold w-32">Date of Birth:</span>
+            <span>{dateOfBirth ? new Date(dateOfBirth).toLocaleDateString('en-GB') : 'Not provided'}</span>
+          </div>
+          <div className="flex items-center">
+            <span className="font-semibold w-32">Age:</span>
+            <span>{age ? `${age} years` : 'Not provided'}</span>
+          </div>
+        </div>
+      </div>
         
         <div className="mt-3 p-2 rounded-lg"> 
           <div className="w-full mx-auto flex justify-end">

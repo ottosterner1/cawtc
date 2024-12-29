@@ -1,30 +1,46 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="max-w-7xl mx-auto mt-10 p-4">
+<!-- Logo and Header Section -->
+<div class="bg-gradient-to-b from-sky-100 to-white pt-0 pb-16">
+    <div class="max-w-7xl mx-auto px-4">
+        <div class="flex flex-col items-center">
+            <img src="{{ url_for('static', filename='img/Wilton-logo.png') }}" 
+                 alt="Wilton Tennis Club" 
+                 class="h-28 w-auto mb-4" />
+            <h1 class="text-3xl font-semibold text-gray-800 mb-2">Welcome to Wilton Tennis Club</h1>
+        </div>
+    </div>
+</div>
+
+<!-- Main Content -->
+<div class="max-w-7xl mx-auto px-4 -mt-8">
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <a href="{{ url_for('main.dashboard') }}" class="block p-6 bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow">
+        <a href="{{ url_for('main.dashboard') }}" 
+           class="block p-8 bg-white rounded-xl shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1">
             <div class="text-center">
-                <div class="text-4xl mb-4 text-blue-500">📊</div>
-                <h2 class="text-xl font-bold mb-2">Coaching Reports</h2>
-                <p>View and manage player reports</p>
+                <div class="text-4xl mb-4 text-sky-500">📊</div>
+                <h2 class="text-xl font-bold mb-3 text-gray-800">Coaching Reports</h2>
+                <p class="text-gray-600">View and manage player reports</p>
             </div>
         </a>
 
         {% if current_user.is_admin or current_user.is_super_admin %}
             {% if current_user.tennis_club_id %}
-            <a href="{{ url_for('club_management.manage_players', club_id=current_user.tennis_club_id) }}" class="block p-6 bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow">
+            <a href="{{ url_for('club_management.manage_players', club_id=current_user.tennis_club_id) }}" 
+               class="block p-8 bg-white rounded-xl shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1">
                 <div class="text-center">
-                    <div class="text-4xl mb-4 text-purple-500">👥</div>
-                    <h2 class="text-xl font-bold mb-2">Manage Programme</h2>
-                    <p>Assign players to coaches and groups</p>
+                    <div class="text-4xl mb-4 text-sky-500">👥</div>
+                    <h2 class="text-xl font-bold mb-3 text-gray-800">Manage Programme</h2>
+                    <p class="text-gray-600">Assign players to coaches and groups</p>
                 </div>
             </a>
 
-            <a href="{{ url_for('main.lta_accreditation') }}" class="block p-6 bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow">
+            <a href="{{ url_for('main.lta_accreditation') }}" 
+               class="block p-8 bg-white rounded-xl shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1">
                 <div class="text-center">
-                    <div class="text-4xl mb-4 text-indigo-500">📋</div>
-                    <h2 class="text-xl font-bold mb-2">LTA Accreditation</h2>
-                    <p>Track coach qualifications and certifications</p>
+                    <div class="text-4xl mb-4 text-sky-500">📋</div>
+                    <h2 class="text-xl font-bold mb-3 text-gray-800">LTA Accreditation</h2>
+                    <p class="text-gray-600">Track coach qualifications and certifications</p>
                 </div>
             </a>
             {% endif %}

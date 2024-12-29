@@ -1680,6 +1680,25 @@ def submit_report(player_id):
         print(traceback.format_exc())
         return jsonify({'error': str(e)}), 400
 
+
+def calculate_age(birth_date):
+    """
+    Calculate age accurately from date of birth, accounting for leap years and exact dates
+    """
+    if not birth_date:
+        return None
+        
+    today = datetime.now()
+    
+    # Calculate age
+    age = today.year - birth_date.year
+    
+    # Adjust age based on month and day
+    if (today.month, today.day) < (birth_date.month, birth_date.day):
+        age -= 1
+        
+    return age
+
 @main.route('/api/reports/template/<int:player_id>', methods=['GET'])
 @login_required
 def get_report_template(player_id):
@@ -1700,6 +1719,9 @@ def get_report_template(player_id):
     
     if not template:
         return jsonify({'error': 'No template found'}), 404
+
+    # Calculate age from date of birth
+    age = calculate_age(player.student.date_of_birth)
 
     return jsonify({
         'template': {
@@ -1724,6 +1746,8 @@ def get_report_template(player_id):
         'player': {
             'id': player.id,
             'studentName': player.student.name,
+            'dateOfBirth': player.student.date_of_birth.isoformat() if player.student.date_of_birth else None,
+            'age': age,
             'groupName': player.tennis_group.name
         }
     })

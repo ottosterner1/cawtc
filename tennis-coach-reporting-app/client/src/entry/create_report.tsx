@@ -9,16 +9,22 @@ interface FormData {
   template_id: number;
 }
 
+interface PlayerData {
+  studentName: string;
+  dateOfBirth: string | null;
+  age: number | null;
+  groupName: string;
+}
+
 const CreateReportApp = () => {
   const [template, setTemplate] = useState<any>(null);
+  const [playerData, setPlayerData] = useState<PlayerData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Get data from the DOM
   const rootElement = document.getElementById('create-report-root');
   const playerId = rootElement?.dataset.playerId;
-  const studentName = rootElement?.dataset.studentName ?? '';
-  const groupName = rootElement?.dataset.groupName ?? '';
 
   useEffect(() => {
     const fetchTemplate = async () => {
@@ -26,8 +32,14 @@ const CreateReportApp = () => {
         const response = await fetch(`/api/reports/template/${playerId}`);
         if (!response.ok) throw new Error('Failed to fetch template');
         const data = await response.json();
-        // Store the entire template object
+        // Store the template and player data separately
         setTemplate(data.template);
+        setPlayerData({
+          studentName: data.player.studentName,
+          dateOfBirth: data.player.dateOfBirth,
+          age: data.player.age,
+          groupName: data.player.groupName
+        });
       } catch (err) {
         setError((err as Error).message);
         console.error('Error fetching template:', err);
@@ -43,7 +55,6 @@ const CreateReportApp = () => {
 
   const handleSubmit = async (data: Record<string, any>) => {
     try {
-      // Transform data to match the backend API requirements
       const formData: FormData = {
         content: data.content,
         recommendedGroupId: Number(data.recommendedGroupId),
@@ -63,7 +74,6 @@ const CreateReportApp = () => {
         throw new Error(errorData.error || 'Failed to submit report');
       }
 
-      // Redirect to dashboard on success
       window.location.href = '/dashboard';
     } catch (err) {
       console.error('Error submitting report:', err);
@@ -73,14 +83,16 @@ const CreateReportApp = () => {
 
   if (loading) return <div className="flex justify-center items-center p-8">Loading...</div>;
   if (error) return <div className="text-red-500 p-4">Error: {error}</div>;
-  if (!template) return <div className="p-4">No template available</div>;
+  if (!template || !playerData) return <div className="p-4">No data available</div>;
 
   return (
     <DynamicReportForm
       template={template}
-      studentName={studentName}
-      groupName={groupName}
-      onSubmit={handleSubmit} // Pass the transformed handleSubmit
+      studentName={playerData.studentName}
+      dateOfBirth={playerData.dateOfBirth || undefined}
+      age={playerData.age || undefined}
+      groupName={playerData.groupName}
+      onSubmit={handleSubmit}
       onCancel={() => window.location.href = '/dashboard'}
     />
   );

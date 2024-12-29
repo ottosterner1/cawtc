@@ -138,6 +138,8 @@ export interface Template {
 export interface DynamicReportFormProps {
   template: Template;
   studentName: string;
+  dateOfBirth?: string;  // New field
+  age?: number;          // New field
   groupName: string;
   initialData?: {
     content: Record<string, Record<string, string>>;
