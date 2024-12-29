@@ -18,7 +18,7 @@ interface Player {
   time_slot?: {
     day_of_week: string;
     start_time: string;
-    endTime: string;
+    end_time: string; 
   };
   report_submitted: boolean;
   report_id: number | null;
@@ -46,8 +46,8 @@ const PeriodFilter: React.FC<{
   selectedPeriod: number | null;
   onPeriodChange: (periodId: number) => void;
 }> = ({ periods, selectedPeriod, onPeriodChange }) => (
-  <div className="mb-6">
-    <div className="flex items-center space-x-2">
+  <div className="mb-8 mt-4">
+    <div className="flex items-center space-x-3">
       <label htmlFor="period" className="block text-sm font-medium text-gray-700">
         Teaching Period:
       </label>
@@ -55,7 +55,7 @@ const PeriodFilter: React.FC<{
         id="period"
         value={selectedPeriod || ''}
         onChange={(e) => onPeriodChange(Number(e.target.value))}
-        className="rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+        className="rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 min-w-[200px]"
       >
         {periods.map((period) => (
           <option key={period.id} value={period.id}>
@@ -107,7 +107,7 @@ const PlayersList: React.FC<{
         acc[groupId].timeSlots[timeSlotId] = {
           dayOfWeek: player.time_slot.day_of_week,
           startTime: player.time_slot.start_time,
-          endTime: player.time_slot.endTime,
+          endTime: player.time_slot.end_time,
           players: []
         };
       }

@@ -305,8 +305,6 @@ def serialize_coach(coach):
         'email': coach.email
     }
 
-
-# Keep your existing dashboard route for the initial page load
 @main.route('/dashboard')
 @login_required
 @verify_club_access()
@@ -338,6 +336,7 @@ def dashboard_stats():
         
         # Base queries - filter by coach if not admin
         players_query = ProgrammePlayers.query.filter_by(tennis_club_id=tennis_club_id)
+
         if not (current_user.is_admin or current_user.is_super_admin):
             players_query = players_query.filter_by(coach_id=current_user.id)
             
@@ -1751,3 +1750,78 @@ def get_report_template(player_id):
             'groupName': player.tennis_group.name
         }
     })
+
+@main.route('/api/reports/print-all/<int:period_id>', methods=['GET'])
+@login_required
+@admin_required
+def print_all_reports(period_id):
+    """Generate a single PDF containing all reports for a teaching period"""
+    try:
+        # Verify period belongs to user's tennis club
+        period = TeachingPeriod.query.filter_by(
+            id=period_id,
+            tennis_club_id=current_user.tennis_club_id
+        ).first_or_404()
+        
+        # Use the appropriate generator based on club name
+        if 'wilton' in current_user.tennis_club.name.lower():
+            from app.utils.wilton_report_generator import EnhancedWiltonReportGenerator
+            
+            # Generate all reports first
+            config_path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
+                'app', 'utils', 'wilton_group_config.json'
+            )
+            generator = EnhancedWiltonReportGenerator(config_path)
+            result = generator.batch_generate_reports(period_id)
+            
+            if result.get('success', 0) == 0:
+                return jsonify({
+                    'error': 'No reports were generated',
+                    'details': result.get('error_details', [])
+                }), 400
+
+            # Get all generated PDFs and merge them
+            from PyPDF2 import PdfMerger
+            merger = PdfMerger()
+            
+            reports_dir = result['output_directory']
+            pdf_count = 0
+            
+            # Walk through all PDFs in the directory and its subdirectories
+            for root, _, files in os.walk(reports_dir):
+                for file in sorted(files):  # Sort files for consistent ordering
+                    if file.endswith('.pdf'):
+                        file_path = os.path.join(root, file)
+                        merger.append(file_path)
+                        pdf_count += 1
+
+            if pdf_count == 0:
+                return jsonify({'error': 'No PDF reports found'}), 404
+
+            # Create the combined PDF in memory
+            output = BytesIO()
+            merger.write(output)
+            output.seek(0)
+            
+            # Format filename
+            formatted_club = current_user.tennis_club.name.lower().replace(' ', '_')
+            formatted_term = period.name.lower().replace(' ', '_')
+            filename = f"combined_reports_{formatted_club}_{formatted_term}.pdf"
+            
+            return send_file(
+                output,
+                mimetype='application/pdf',
+                as_attachment=True,
+                download_name=filename
+            )
+            
+        else:
+            # Handle non-Wilton clubs here if needed
+            from app.utils.report_generator import batch_generate_reports
+            # Similar logic as above but using the standard generator
+            
+    except Exception as e:
+        current_app.logger.error(f"Error generating combined PDF: {str(e)}")
+        current_app.logger.error(traceback.format_exc())
+        return jsonify({'error': str(e)}), 500

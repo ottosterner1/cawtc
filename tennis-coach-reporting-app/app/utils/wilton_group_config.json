@@ -16,7 +16,8 @@
                 "RALLYING": { "start_y": 263, "spacing": 15, "yes_x": 385, "nearly_x": 405, "not_yet_x": 425 },
                 "COMPETITION": { "start_y": 175, "spacing": 15, "yes_x": 385, "nearly_x": 405, "not_yet_x": 425 }
             },
-            "group_recommendation": { "red_x": 338, "orange_x": 418, "y": 155 }
+            "group_recommendation": { "red_x": 338, "orange_x": 418, "y": 155 },
+            "next_term": {"autumn_x": 165, "spring_x": 265, "summer_x": 369, "y": 133}
         }
     },
     "Red 2": {
@@ -36,7 +37,8 @@
                 "RALLYING": { "start_y": 263, "spacing": 15, "yes_x": 385, "nearly_x": 405, "not_yet_x": 425 },
                 "COMPETITION": { "start_y": 175, "spacing": 15, "yes_x": 385, "nearly_x": 405, "not_yet_x": 425 }
             },
-            "group_recommendation": { "red_x": 338, "orange_x": 418, "y": 155 }
+            "group_recommendation": { "red_x": 338, "orange_x": 418, "y": 155 },
+            "next_term": {"autumn_x": 165, "spring_x": 265, "summer_x": 369, "y": 133}
         }
     },
     "Red 3": {
@@ -55,7 +57,8 @@
                 "RALLYING": { "start_y": 278, "spacing": 15, "yes_x": 385, "nearly_x": 405, "not_yet_x": 425 },
                 "COMPETITION": { "start_y": 225, "spacing": 15, "yes_x": 385, "nearly_x": 405, "not_yet_x": 425 }
             },
-            "group_recommendation": { "red_x": 338, "orange_x": 418, "y": 155 }
+            "group_recommendation": { "red_x": 338, "orange_x": 418, "y": 170 },
+            "next_term": {"autumn_x": 165, "spring_x": 265, "summer_x": 369, "y": 147}
         }
     },
     "Orange 1": {
@@ -73,7 +76,8 @@
                 "RALLYING": { "start_y": 320, "spacing": 14, "yes_x": 385, "nearly_x": 405, "not_yet_x": 425 },
                 "COMPETITION": { "start_y": 252, "spacing": 15, "yes_x": 385, "nearly_x": 405, "not_yet_x": 425 }
             },
-            "group_recommendation": { "red_x": 338, "orange_x": 418, "y": 155 }
+            "group_recommendation": { "orange_x": 349, "green_x": 418, "y": 179 },
+            "next_term": {"autumn_x": 165, "spring_x": 265, "summer_x": 369, "y": 157}
         }
     },
     "Orange 3": {
@@ -91,7 +95,8 @@
                 "RALLYING AND POINTS": { "start_y": 275, "spacing": 14, "yes_x": 385, "nearly_x": 405, "not_yet_x": 425 },
                 "COMPETITION": { "start_y": 205, "spacing": 15, "yes_x": 385, "nearly_x": 405, "not_yet_x": 425 }
             },
-            "group_recommendation": { "orange_x": 338, "green_x": 418, "y": 155 }
+            "group_recommendation": { "orange_x": 349, "green_x": 418, "y": 157 },
+            "next_term": {"autumn_x": 165, "spring_x": 265, "summer_x": 369, "y": 134}
         }
     },
     "Green 1": {
@@ -109,7 +114,8 @@
                 "RALLYING": { "start_y": 304, "spacing": 14, "yes_x": 385, "nearly_x": 405, "not_yet_x": 425 },
                 "COMPETITION": { "start_y": 234, "spacing": 15, "yes_x": 385, "nearly_x": 405, "not_yet_x": 425 }
             },
-            "group_recommendation": { "green_x": 338, "yellow_x": 418, "y": 155 }
+            "group_recommendation": { "green_x": 348, "yellow_x": 418, "y": 169 },
+            "next_term": {"autumn_x": 165, "spring_x": 265, "summer_x": 369, "y": 147}
         }
     },
     "Green 3": {
@@ -127,7 +133,8 @@
                 "RALLYING & POINTS": { "start_y": 261, "spacing": 14, "yes_x": 385, "nearly_x": 405, "not_yet_x": 425 },
                 "COMPETITION": { "start_y": 191, "spacing": 15, "yes_x": 385, "nearly_x": 405, "not_yet_x": 425 }
             },
-            "group_recommendation": { "green_x": 338, "yellow_x": 418, "y": 155 }
+            "group_recommendation": { "green_x": 348, "yellow_x": 418, "y": 141 },
+            "next_term": {"autumn_x": 165, "spring_x": 265, "summer_x": 369, "y": 118}
         }
     },
     "Yellow 1": {
@@ -145,7 +152,8 @@
                 "RALLYING": { "start_y": 307, "spacing": 14, "yes_x": 385, "nearly_x": 405, "not_yet_x": 425 },
                 "COMPETITION": { "start_y": 237, "spacing": 15, "yes_x": 385, "nearly_x": 405, "not_yet_x": 425 }
             },
-            "group_recommendation": { "yellow_x": 338, "performance_x": 418, "y": 155 }
+            "group_recommendation": { "yellow_x": 331, "performance_x": 427, "y": 169 },
+            "next_term": {"autumn_x": 165, "spring_x": 265, "summer_x": 369, "y": 147}
         }
     },
     "Yellow 2": {
@@ -165,7 +173,8 @@
                 "RALLYING": { "start_y": 274, "spacing": 14, "yes_x": 385, "nearly_x": 405, "not_yet_x": 425 },
                 "COMPETITION": { "start_y": 232, "spacing": 15, "yes_x": 385, "nearly_x": 405, "not_yet_x": 425 }
             },
-            "group_recommendation": { "yellow_x": 338, "performance_x": 418, "y": 155 }
+            "group_recommendation": { "yellow_x": 330, "performance_x": 427, "y": 169 },
+            "next_term": {"autumn_x": 165, "spring_x": 265, "summer_x": 369, "y": 147}
         }
     },
     "Yellow 3": {
@@ -185,7 +194,8 @@
                 "RALLYING": { "start_y": 274, "spacing": 14, "yes_x": 385, "nearly_x": 405, "not_yet_x": 425 },
                 "COMPETITION": { "start_y": 232, "spacing": 15, "yes_x": 385, "nearly_x": 405, "not_yet_x": 425 }
             },
-            "group_recommendation": { "yellow_x": 338, "performance_x": 418, "y": 155 }
+            "group_recommendation": { "yellow_x": 330, "performance_x": 427, "y": 169 },
+            "next_term": {"autumn_x": 165, "spring_x": 265, "summer_x": 369, "y": 147}
         }
     },
     "Purple Tots": {
@@ -205,7 +215,8 @@
                 "RALLYING": { "start_y": 265, "spacing": 14, "yes_x": 385, "nearly_x": 405, "not_yet_x": 425 },
                 "COMPETITION": { "start_y": 237, "spacing": 15, "yes_x": 385, "nearly_x": 405, "not_yet_x": 425 }
             },
-            "group_recommendation": { "tots_x": 338, "red_x": 418, "y": 155 }
+            "group_recommendation": { "tots_x": 344, "red_x": 418, "y": 189 },
+            "next_term": {"autumn_x": 165, "spring_x": 265, "summer_x": 369, "y": 167}
         }
     }
 }

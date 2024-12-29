@@ -33,6 +33,7 @@ const Dashboard: React.FC<DashboardProps> = () => {
   const [error, setError] = useState<string | null>(null);
   const [showBulkEmail, setShowBulkEmail] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [printing, setPrinting] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -138,6 +139,47 @@ const Dashboard: React.FC<DashboardProps> = () => {
     }
   };
 
+  const handlePrintAllReports = async () => {
+    if (!selectedPeriod) {
+      alert('Please select a teaching period');
+      return;
+    }
+  
+    try {
+      setPrinting(true);
+      const response = await fetch(`/api/reports/print-all/${selectedPeriod}`, {
+        method: 'GET',
+        credentials: 'include'
+      });
+  
+      if (!response.ok) {
+        if (response.headers.get('content-type')?.includes('application/json')) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to generate combined report');
+        }
+        throw new Error('Failed to print reports');
+      }
+  
+      // Get the PDF blob
+      const blob = await response.blob();
+      
+      // Create URL for the blob
+      const url = window.URL.createObjectURL(blob);
+      
+      // Open in a new window
+      window.open(url, '_blank');
+      
+      // Clean up
+      window.URL.revokeObjectURL(url);
+  
+    } catch (error) {
+      console.error('Error printing reports:', error);
+      alert('Error printing reports: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setPrinting(false);
+    }
+  };
+
   const groupPlayersByGroupAndTime = (players: ProgrammePlayer[]): GroupedPlayers => {
     return players.reduce((acc: GroupedPlayers, player) => {
       const groupName = player.group_name;
@@ -189,6 +231,19 @@ const Dashboard: React.FC<DashboardProps> = () => {
                 {downloading ? 'Downloading...' : 'Download All Reports'}
                 {stats?.totalReports > 0 && !downloading && (
                   <span className="bg-blue-500 px-2 py-0.5 rounded-full text-sm">
+                    {stats.totalReports}
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={handlePrintAllReports}
+                disabled={!selectedPeriod || !stats?.totalReports || printing}
+                className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {printing ? 'Preparing...' : 'Print All Reports'}
+                {stats?.totalReports > 0 && !printing && (
+                  <span className="bg-purple-500 px-2 py-0.5 rounded-full text-sm">
                     {stats.totalReports}
                   </span>
                 )}
@@ -378,7 +433,7 @@ const Dashboard: React.FC<DashboardProps> = () => {
                                   </a>
                                 ) : (
                                   <span className="text-sm text-gray-500 italic">
-                                    No template assigned
+                                    No Report Available
                                   </span>
                                 )
                               )}
