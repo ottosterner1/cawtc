@@ -100,6 +100,7 @@ export interface ProgrammePlayer {
   report_id?: number;
   can_edit: boolean;
   has_template: boolean;
+  assigned_coach_id: number;
 }
 
 export interface Group {

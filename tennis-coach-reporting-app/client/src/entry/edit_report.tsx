@@ -183,7 +183,7 @@ const EditReportApp: React.FC = () => {
         groupName={report.groupName}
         initialData={initialFormData}
         onSubmit={handleSubmit}
-        onCancel={() => window.location.href = `/reports/${reportId}`}
+        onCancel={() => window.location.href = `/dashboard`}
       />
     </div>
   );

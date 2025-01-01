@@ -334,25 +334,45 @@ def dashboard_stats():
         tennis_club_id = current_user.tennis_club_id
         selected_period_id = request.args.get('period', type=int)
         
-        # Base queries - filter by coach if not admin
-        players_query = ProgrammePlayers.query.filter_by(tennis_club_id=tennis_club_id)
+        # Base query - include both template active checks
+        base_query = (ProgrammePlayers.query
+            .select_from(ProgrammePlayers)
+            .join(TennisGroup, ProgrammePlayers.group_id == TennisGroup.id)
+            .join(GroupTemplate, and_(
+                TennisGroup.id == GroupTemplate.group_id,
+                GroupTemplate.is_active == True
+            ))
+            .join(ReportTemplate, and_(
+                ReportTemplate.id == GroupTemplate.template_id,
+                ReportTemplate.is_active == True
+            ))
+            .filter(ProgrammePlayers.tennis_club_id == tennis_club_id))
 
         if not (current_user.is_admin or current_user.is_super_admin):
-            players_query = players_query.filter_by(coach_id=current_user.id)
+            base_query = base_query.filter(ProgrammePlayers.coach_id == current_user.id)
             
         if selected_period_id:
-            players_query = players_query.filter_by(teaching_period_id=selected_period_id)
+            base_query = base_query.filter(ProgrammePlayers.teaching_period_id == selected_period_id)
             
-        total_students = players_query.count()
+        total_students = base_query.count()
         
-        # Get reports - filter by programme player's coach if not admin
-        reports_query = Report.query.join(ProgrammePlayers).filter(
-            ProgrammePlayers.tennis_club_id == tennis_club_id
-        )
+        # Get reports
+        reports_query = (Report.query
+            .select_from(Report)
+            .join(ProgrammePlayers)
+            .join(TennisGroup, ProgrammePlayers.group_id == TennisGroup.id)
+            .join(GroupTemplate, and_(
+                TennisGroup.id == GroupTemplate.group_id,
+                GroupTemplate.is_active == True
+            ))
+            .join(ReportTemplate, and_(
+                ReportTemplate.id == GroupTemplate.template_id,
+                ReportTemplate.is_active == True
+            ))
+            .filter(ProgrammePlayers.tennis_club_id == tennis_club_id))
+
         if not (current_user.is_admin or current_user.is_super_admin):
-            reports_query = reports_query.filter(
-                ProgrammePlayers.coach_id == current_user.id  # Filter by the coach of the programme player
-            )
+            reports_query = reports_query.filter(ProgrammePlayers.coach_id == current_user.id)
             
         if selected_period_id:
             reports_query = reports_query.filter(Report.teaching_period_id == selected_period_id)
@@ -360,23 +380,24 @@ def dashboard_stats():
         total_reports = reports_query.count()
         completion_rate = round((total_reports / total_students * 100) if total_students > 0 else 0, 1)
         
-        # Get all periods
-        periods = TeachingPeriod.query.filter_by(
-            tennis_club_id=tennis_club_id
-        ).order_by(TeachingPeriod.start_date.desc()).all()
-        
         # Get group stats
-        group_stats_query = db.session.query(
+        group_stats_query = (db.session.query(
             TennisGroup.name,
             func.count(distinct(ProgrammePlayers.id)).label('count'),
             func.count(distinct(Report.id)).label('reports_completed')
-        ).join(
-            ProgrammePlayers, TennisGroup.id == ProgrammePlayers.group_id
-        ).outerjoin(
-            Report, ProgrammePlayers.id == Report.programme_player_id
-        ).filter(
-            ProgrammePlayers.tennis_club_id == tennis_club_id
         )
+        .select_from(TennisGroup)
+        .join(GroupTemplate, and_(
+            TennisGroup.id == GroupTemplate.group_id,
+            GroupTemplate.is_active == True
+        ))
+        .join(ReportTemplate, and_(
+            ReportTemplate.id == GroupTemplate.template_id,
+            ReportTemplate.is_active == True
+        ))
+        .join(ProgrammePlayers, TennisGroup.id == ProgrammePlayers.group_id)
+        .outerjoin(Report, ProgrammePlayers.id == Report.programme_player_id)
+        .filter(ProgrammePlayers.tennis_club_id == tennis_club_id))
         
         if selected_period_id:
             group_stats_query = group_stats_query.filter(
@@ -400,29 +421,38 @@ def dashboard_stats():
             ).all()
             
             for coach in coaches:
-                coach_players = players_query.filter_by(coach_id=coach.id)
-                coach_reports = reports_query.filter(ProgrammePlayers.coach_id == coach.id)  # Match ProgrammePlayer's coach
+                # Create fresh queries for each coach
+                coach_players = base_query.filter(ProgrammePlayers.coach_id == coach.id).count()
+                coach_reports = reports_query.filter(ProgrammePlayers.coach_id == coach.id).count()
                 
                 coach_summaries.append({
                     'id': coach.id,
                     'name': coach.name,
-                    'total_assigned': coach_players.count(),
-                    'reports_completed': coach_reports.count()
+                    'total_assigned': coach_players,
+                    'reports_completed': coach_reports
                 })
 
         # Get group recommendations
-        recommendations_query = db.session.query(
+        recommendations_query = (db.session.query(
             TennisGroup.name.label('from_group'),
             func.count().label('count'),
             Report.recommended_group_id
-        ).join(
-            ProgrammePlayers, Report.programme_player_id == ProgrammePlayers.id
-        ).join(
-            TennisGroup, ProgrammePlayers.group_id == TennisGroup.id
-        ).filter(
+        )
+        .select_from(Report)
+        .join(ProgrammePlayers, Report.programme_player_id == ProgrammePlayers.id)
+        .join(TennisGroup, ProgrammePlayers.group_id == TennisGroup.id)
+        .join(GroupTemplate, and_(
+            TennisGroup.id == GroupTemplate.group_id,
+            GroupTemplate.is_active == True
+        ))
+        .join(ReportTemplate, and_(
+            ReportTemplate.id == GroupTemplate.template_id,
+            ReportTemplate.is_active == True
+        ))
+        .filter(
             ProgrammePlayers.tennis_club_id == tennis_club_id,
             Report.recommended_group_id.isnot(None)
-        )
+        ))
         
         if selected_period_id:
             recommendations_query = recommendations_query.filter(
@@ -434,14 +464,14 @@ def dashboard_stats():
                 ProgrammePlayers.coach_id == current_user.id
             )
             
-        recommendations_query = recommendations_query.group_by(
+        recommendations = recommendations_query.group_by(
             TennisGroup.name,
             Report.recommended_group_id
         ).all()
         
-        # Process recommendations to include target group names
+        # Process recommendations
         group_recommendations = []
-        for from_group, count, recommended_group_id in recommendations_query:
+        for from_group, count, recommended_group_id in recommendations:
             to_group = TennisGroup.query.get(recommended_group_id)
             if to_group:
                 group_recommendations.append({
@@ -454,7 +484,7 @@ def dashboard_stats():
             'periods': [{
                 'id': p.id,
                 'name': p.name
-            } for p in periods],
+            } for p in TeachingPeriod.query.filter_by(tennis_club_id=tennis_club_id).order_by(TeachingPeriod.start_date.desc()).all()],
             'stats': {
                 'totalStudents': total_students,
                 'totalReports': total_reports,
@@ -531,7 +561,8 @@ def programme_players():
             Report.id.label('report_id'),
             Report.coach_id,
             ProgrammePlayers.coach_id.label('assigned_coach_id'),
-            func.count(GroupTemplate.id).label('template_count')  # Add this
+            func.count(GroupTemplate.id).label('template_count'),
+            ProgrammePlayers.coach_id.label('assigned_coach_id')
         ).group_by(
             ProgrammePlayers.id,
             Student.name,
@@ -562,7 +593,8 @@ def programme_players():
             'can_edit': current_user.is_admin or current_user.is_super_admin or 
                        player.coach_id == current_user.id or 
                        player.assigned_coach_id == current_user.id,
-            'has_template': player.template_count > 0  # Add this
+            'has_template': player.template_count > 0,
+            'assigned_coach_id': player.assigned_coach_id 
         } for player in players])
         
     except Exception as e:

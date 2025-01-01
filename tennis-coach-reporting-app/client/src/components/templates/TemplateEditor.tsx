@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent } from '../../components/ui/card';
+import { Card, CardContent, CardHeader } from '../../components/ui/card';
 import { Alert, AlertDescription } from '../../components/ui/alert';
+import { PlusCircle, X, GripVertical, ChevronDown, ChevronUp } from 'lucide-react';
 import type { ReportTemplate, TemplateSection, TemplateField } from '../../types/dashboard';
 
 interface TemplateEditorProps {
@@ -9,7 +10,6 @@ interface TemplateEditorProps {
   onCancel: () => void;
 }
 
-// Define available field types
 const FIELD_TYPES = [
   { value: 'text', label: 'Short Text' },
   { value: 'textarea', label: 'Long Text' },
@@ -38,9 +38,9 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onSave, onCan
     template?.assignedGroups?.map(g => g.id) || []
   );
   const [availableGroups, setAvailableGroups] = useState<Array<{ id: number, name: string }>>([]);
+  const [expandedSections, setExpandedSections] = useState<Set<number>>(new Set());
 
   useEffect(() => {
-    // Fetch available groups
     const fetchGroups = async () => {
       try {
         const response = await fetch('/api/groups');
@@ -54,12 +54,26 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onSave, onCan
     fetchGroups();
   }, []);
 
+  const toggleSection = (index: number) => {
+    setExpandedSections(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(index)) {
+        newSet.delete(index);
+      } else {
+        newSet.add(index);
+      }
+      return newSet;
+    });
+  };
+
   const addSection = () => {
+    const newSectionIndex = sections.length;
     setSections([...sections, {
       name: '',
-      order: sections.length,
+      order: newSectionIndex,
       fields: []
     }]);
+    setExpandedSections(prev => new Set([...prev, newSectionIndex]));
   };
 
   const updateSection = (index: number, updates: Partial<TemplateSection>) => {
@@ -88,7 +102,6 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onSave, onCan
     const newSections = [...sections];
     const field = newSections[sectionIndex].fields[fieldIndex];
   
-    // If field type is changing, set default options
     if (updates.fieldType && FIELD_TYPES.some(type => type.value === updates.fieldType)) {
       updates.options = DEFAULT_OPTIONS[updates.fieldType as keyof typeof DEFAULT_OPTIONS] || null;
     }
@@ -153,7 +166,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onSave, onCan
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-8">
       {errors.length > 0 && (
         <Alert variant="destructive">
           <AlertDescription>
@@ -166,32 +179,45 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onSave, onCan
         </Alert>
       )}
 
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700">Template Name</label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-          />
+      <div className="space-y-6">
+        <div className="grid gap-6 sm:grid-cols-2">
+          <div className="col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Template Name
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-3 py-2 rounded-md border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              placeholder="Enter template name"
+            />
+          </div>
+
+          <div className="col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Description
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full px-3 py-2 rounded-md border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              rows={3}
+              placeholder="Enter template description"
+            />
+          </div>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">Description</label>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-            rows={2}
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700">Assign Groups</label>
-          <div className="mt-2 space-y-2">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Assign Groups
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             {availableGroups.map(group => (
-              <label key={group.id} className="inline-flex items-center mr-4">
+              <label
+                key={group.id}
+                className="flex items-center p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer"
+              >
                 <input
                   type="checkbox"
                   checked={selectedGroups.includes(group.id)}
@@ -201,106 +227,146 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onSave, onCan
                       : selectedGroups.filter(id => id !== group.id)
                     );
                   }}
-                  className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
-                <span className="ml-2">{group.name}</span>
+                <span className="ml-3 text-sm">{group.name}</span>
               </label>
             ))}
           </div>
         </div>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-6">
         <div className="flex justify-between items-center">
-          <h3 className="text-lg font-medium">Assessment Sections</h3>
+          <h3 className="text-lg font-medium text-gray-900">Assessment Sections</h3>
           <button
             type="button"
             onClick={addSection}
-            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+            className="inline-flex items-center px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
           >
+            <PlusCircle className="h-5 w-5 mr-2" />
             Add Section
           </button>
         </div>
 
-        {sections.map((section, sectionIndex) => (
-          <Card key={sectionIndex}>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <input
-                  type="text"
-                  value={section.name}
-                  onChange={(e) => updateSection(sectionIndex, { name: e.target.value })}
-                  placeholder="Section Name"
-                  className="flex-1 rounded-md border-gray-300"
-                />
-                <button
-                  type="button"
-                  onClick={() => removeSection(sectionIndex)}
-                  className="ml-2 text-red-500 hover:text-red-600"
+        <div className="space-y-4">
+          {sections.map((section, sectionIndex) => (
+            <Card key={sectionIndex} className="border border-gray-200">
+              <CardHeader>
+                <div 
+                  className="flex items-center justify-between cursor-pointer hover:bg-gray-50"
+                  onClick={() => toggleSection(sectionIndex)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      toggleSection(sectionIndex);
+                    }
+                  }}
                 >
-                  Remove Section
-                </button>
-              </div>
-
-              {section.fields.map((field, fieldIndex) => (
-                <div key={fieldIndex} className="flex items-center gap-4">
-                  <input
-                    type="text"
-                    value={field.name}
-                    onChange={(e) => updateField(sectionIndex, fieldIndex, { name: e.target.value })}
-                    placeholder="Field Name"
-                    className="flex-1 rounded-md border-gray-300"
-                  />
-                  <select
-                    value={field.fieldType}
-                    onChange={(e) => updateField(sectionIndex, fieldIndex, { fieldType: e.target.value as 'text' | 'textarea' | 'rating' | 'select' | 'progress' })}
-                    className="rounded-md border-gray-300"
-                  >
-                    {FIELD_TYPES.map(type => (
-                      <option key={type.value} value={type.value}>{type.label}</option>
-                    ))}
-                  </select>
-                  <label className="inline-flex items-center">
+                  <div className="flex items-center space-x-3">
+                    <GripVertical className="h-5 w-5 text-gray-400" />
                     <input
-                      type="checkbox"
-                      checked={field.isRequired}
-                      onChange={(e) => updateField(sectionIndex, fieldIndex, { isRequired: e.target.checked })}
-                      className="rounded border-gray-300"
+                      type="text"
+                      value={section.name}
+                      onChange={(e) => updateSection(sectionIndex, { name: e.target.value })}
+                      placeholder="Section Name"
+                      className="text-lg font-medium bg-transparent border-none focus:ring-0 p-0"
+                      onClick={(e) => e.stopPropagation()}
                     />
-                    <span className="ml-2">Required</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => removeField(sectionIndex, fieldIndex)}
-                    className="text-red-500 hover:text-red-600"
-                  >
-                    Remove
-                  </button>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeSection(sectionIndex);
+                      }}
+                      className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                    {expandedSections.has(sectionIndex) ? (
+                      <ChevronUp className="h-5 w-5 text-gray-400" />
+                    ) : (
+                      <ChevronDown className="h-5 w-5 text-gray-400" />
+                    )}
+                  </div>
                 </div>
-              ))}
-              <button
-                type="button"
-                onClick={() => addField(sectionIndex)}
-                className="text-sm text-blue-500 hover:text-blue-600"
-              >
-                + Add Field
-              </button>
-            </CardContent>
-          </Card>
-        ))}
+              </CardHeader>
+
+              {expandedSections.has(sectionIndex) && (
+                <CardContent>
+                  <div className="space-y-4">
+                    {section.fields.map((field, fieldIndex) => (
+                      <div
+                        key={fieldIndex}
+                        className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 bg-gray-50 rounded-lg"
+                      >
+                        <div className="flex-1">
+                          <input
+                            type="text"
+                            value={field.name}
+                            onChange={(e) => updateField(sectionIndex, fieldIndex, { name: e.target.value })}
+                            placeholder="Field Name"
+                            className="w-full px-3 py-2 rounded-md border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                          />
+                        </div>
+                        <select
+                          value={field.fieldType}
+                          onChange={(e) => updateField(sectionIndex, fieldIndex, { fieldType: e.target.value as 'text' | 'textarea' | 'rating' | 'select' | 'progress' })}
+                          className="w-full sm:w-auto px-3 py-2 rounded-md border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                        >
+                          {FIELD_TYPES.map(type => (
+                            <option key={type.value} value={type.value}>{type.label}</option>
+                          ))}
+                        </select>
+                        <label className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            checked={field.isRequired}
+                            onChange={(e) => updateField(sectionIndex, fieldIndex, { isRequired: e.target.checked })}
+                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="text-sm text-gray-700">Required</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => removeField(sectionIndex, fieldIndex)}
+                          className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                        >
+                          <X className="h-5 w-5" />
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => addField(sectionIndex)}
+                      className="inline-flex items-center px-4 py-2 text-sm text-blue-600 hover:text-blue-700 transition-colors"
+                    >
+                      <PlusCircle className="h-4 w-4 mr-2" />
+                      Add Field
+                    </button>
+                  </div>
+                </CardContent>
+              )}
+            </Card>
+          ))}
+        </div>
       </div>
 
-      <div className="flex justify-end space-x-4 mt-8">
+      <div className="flex justify-end space-x-4 pt-6 border-t">
         <button
           type="button"
           onClick={onCancel}
-          className="px-4 py-2 border rounded-md hover:bg-gray-50"
+          className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
         >
           Cancel
         </button>
         <button
           type="submit"
-          className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
         >
           Save Template
         </button>

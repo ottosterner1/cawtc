@@ -162,6 +162,8 @@ class TeachingPeriod(db.Model):
     name = db.Column(db.String(50), nullable=False)
     start_date = db.Column(db.DateTime(timezone=True), nullable=False)
     end_date = db.Column(db.DateTime(timezone=True), nullable=False)
+    next_period_start_date = db.Column(db.DateTime(timezone=True), nullable=True)  
+    bookings_open_date = db.Column(db.DateTime(timezone=True), nullable=True)    
     created_at = db.Column(db.DateTime(timezone=True), server_default=text('CURRENT_TIMESTAMP'))
     tennis_club_id = db.Column(db.Integer, db.ForeignKey('tennis_club.id'), nullable=False)
 

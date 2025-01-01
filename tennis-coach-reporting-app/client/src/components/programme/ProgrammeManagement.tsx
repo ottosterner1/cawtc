@@ -3,6 +3,7 @@ import { Card, CardContent } from '../../components/ui/card';
 import { Alert, AlertDescription } from '../../components/ui/alert';
 import { Download, PlusCircle, Pencil } from 'lucide-react';
 import BulkUploadSection from './BulkUploadSection';
+import ProgrammeAnalytics from './ProgrammeAnalytics';
 
 interface TeachingPeriod {
   id: number;
@@ -89,7 +90,6 @@ const PlayersList: React.FC<{
     );
   }
 
-  // Group players by their groups and time slots
   const groupedPlayers: GroupedPlayers = players.reduce((acc, player) => {
     const groupId = String(player.group_id);
     const timeSlotId = player.group_time_id ? String(player.group_time_id) : 'unassigned';
@@ -130,7 +130,6 @@ const PlayersList: React.FC<{
     <div className="space-y-8">
       {Object.entries(groupedPlayers).map(([groupId, group]) => (
         <div key={groupId} className="bg-white shadow rounded-lg overflow-hidden">
-          {/* Group Header */}
           <div className="p-4 bg-gray-50">
             <div className="flex justify-between items-center">
               <h3 className="text-lg font-semibold text-gray-900">
@@ -146,7 +145,6 @@ const PlayersList: React.FC<{
             </div>
           </div>
 
-          {/* Time Slots */}
           <div className="divide-y divide-gray-200">
             {Object.entries(group.timeSlots).map(([timeSlotId, timeSlot]) => (
               <div key={timeSlotId} className="p-4">
@@ -166,11 +164,11 @@ const PlayersList: React.FC<{
                         <span className="ml-2">
                           {player.report_submitted ? (
                             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                              Completed
+                              Completed Report
                             </span>
                           ) : (
                             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                              Pending
+                              Pending Report
                             </span>
                           )}
                         </span>
@@ -190,7 +188,6 @@ const PlayersList: React.FC<{
               </div>
             ))}
 
-            {/* Unassigned Players Section */}
             {group.unassignedPlayers.length > 0 && (
               <div className="p-4">
                 <h4 className="text-sm font-medium text-gray-700 mb-3">
@@ -239,7 +236,6 @@ const PlayersList: React.FC<{
   );
 };
 
-// Main ProgrammeManagement Component
 const ProgrammeManagement = () => {
   const [clubId, setClubId] = useState<number | null>(null);
   const [periods, setPeriods] = useState<TeachingPeriod[]>([]);
@@ -249,7 +245,6 @@ const ProgrammeManagement = () => {
   const [error, setError] = useState<string | null>(null);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
 
-  // Fetch club ID and user data
   useEffect(() => {
     const fetchUserData = async () => {
       try {
@@ -266,7 +261,6 @@ const ProgrammeManagement = () => {
     fetchUserData();
   }, []);
 
-  // Fetch players based on selected period
   const fetchPlayers = useCallback(async () => {
     if (!selectedPeriod) return;
     
@@ -284,7 +278,6 @@ const ProgrammeManagement = () => {
     }
   }, [selectedPeriod]);
 
-  // Fetch periods on component mount
   useEffect(() => {
     const fetchPeriods = async () => {
       try {
@@ -304,7 +297,6 @@ const ProgrammeManagement = () => {
     fetchPeriods();
   }, []);
 
-  // Fetch players when selected period changes
   useEffect(() => {
     fetchPlayers();
   }, [fetchPlayers]);
@@ -319,7 +311,9 @@ const ProgrammeManagement = () => {
   };
 
   const handleAddPlayer = () => {
-    window.location.href = `/clubs/manage/${clubId}/players/add`;
+    if (clubId) {
+      window.location.href = `/clubs/manage/${clubId}/players/add`;
+    }
   };
 
   if (error) {
@@ -374,6 +368,11 @@ const ProgrammeManagement = () => {
               </button>
             </div>
           </div>
+
+          {/* Analytics Section */}
+          <ProgrammeAnalytics players={players} />
+
+
 
           {/* Bulk Upload Section */}
           {showBulkUpload && (

@@ -156,6 +156,10 @@ def manage_teaching_periods(club_id):
                 start_date = datetime.strptime(request.form['start_date'], '%Y-%m-%d')
                 end_date = datetime.strptime(request.form['end_date'], '%Y-%m-%d')
                 
+                # Get optional dates
+                next_period_start = request.form.get('next_period_start_date')
+                bookings_open = request.form.get('bookings_open_date')
+                
                 if start_date > end_date:
                     flash('Start date must be before end date', 'error')
                 else:
@@ -163,6 +167,8 @@ def manage_teaching_periods(club_id):
                         name=name,
                         start_date=start_date,
                         end_date=end_date,
+                        next_period_start_date=datetime.strptime(next_period_start, '%Y-%m-%d') if next_period_start else None,
+                        bookings_open_date=datetime.strptime(bookings_open, '%Y-%m-%d') if bookings_open else None,
                         tennis_club_id=club.id
                     )
                     db.session.add(period)
@@ -178,6 +184,19 @@ def manage_teaching_periods(club_id):
                 period.start_date = datetime.strptime(request.form['start_date'], '%Y-%m-%d')
                 period.end_date = datetime.strptime(request.form['end_date'], '%Y-%m-%d')
                 
+                # Handle optional dates
+                next_period_start = request.form.get('next_period_start_date')
+                bookings_open = request.form.get('bookings_open_date')
+                
+                period.next_period_start_date = (
+                    datetime.strptime(next_period_start, '%Y-%m-%d') 
+                    if next_period_start else None
+                )
+                period.bookings_open_date = (
+                    datetime.strptime(bookings_open, '%Y-%m-%d')
+                    if bookings_open else None
+                )
+                
                 if period.start_date > period.end_date:
                     flash('Start date must be before end date', 'error')
                 else:
@@ -189,7 +208,7 @@ def manage_teaching_periods(club_id):
                 period_id = request.form.get('period_id')
                 period = TeachingPeriod.query.get_or_404(period_id)
                 
-                if period.reports.count() > 0:  # Changed from if period.reports:
+                if period.reports.count() > 0:
                     flash('Cannot delete teaching period with existing reports', 'error')
                 else:
                     db.session.delete(period)
