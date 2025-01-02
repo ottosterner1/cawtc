@@ -17,13 +17,15 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
   initialData,
   onSubmit,
   onCancel,
-  isSubmitting = false
+  isSubmitting = false,
+  onSaveAndNext // New prop for handling save and next
 }) => {
   const [formData, setFormData] = useState<Record<string, Record<string, any>>>({});
   const [errors, setErrors] = useState<string[]>([]);
   const [touched, setTouched] = useState<Record<string, Record<string, boolean>>>({});
   const [groups, setGroups] = useState<Group[]>([]);
   const [recommendedGroupId, setRecommendedGroupId] = useState<number | string>('');
+  const [isSavingAndNext, setIsSavingAndNext] = useState(false);
 
   // Fetch available groups
   useEffect(() => {
@@ -41,8 +43,8 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
     fetchGroups();
   }, []);
 
+  // Initialize form data from template and initialData
   useEffect(() => {
-  
     const allSections = new Set([
       ...template.sections.map(section => section.name),
       ...Object.keys(initialData?.content || {})
@@ -72,7 +74,6 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
     setTouched(initializedTouchedFields);
     setRecommendedGroupId(initialData?.recommendedGroupId || '');
   }, [initialData, template]);
-  
 
   const handleFieldChange = (sectionName: string, fieldName: string, value: any) => {
     setFormData(prev => ({
@@ -143,25 +144,32 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
     return newErrors.length === 0;
   };
 
-  // Update handleSubmit function
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent, saveAndNext: boolean = false) => {
     e.preventDefault();
     
     if (!validateForm()) {
       return;
     }
 
+    setIsSavingAndNext(saveAndNext);
+
     try {
       const submitData = {
-        content: formData,  // Direct form data
+        content: formData,
         recommendedGroupId: Number(recommendedGroupId),
         template_id: template.id
       };
 
-      await onSubmit(submitData);
+      if (saveAndNext) {
+        await onSaveAndNext?.(submitData);
+      } else {
+        await onSubmit(submitData);
+      }
     } catch (error) {
       setErrors(prev => [...prev, 'Failed to submit report. Please try again.']);
       console.error('Submit error:', error);
+    } finally {
+      setIsSavingAndNext(false);
     }
   };
 
@@ -207,7 +215,7 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
       value,
       onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => 
         handleFieldChange(section.name, field.name, e.target.value),
-      className: `w-full p-2 border rounded ${error ? 'border-blue-500' : 'border-gray-300'} 
+      className: `w-full p-2 border rounded ${error ? 'border-red-500' : 'border-gray-300'} 
                  focus:outline-none focus:ring-2 focus:ring-blue-500`,
       required: field.isRequired
     };
@@ -221,7 +229,7 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
               className="block text-sm font-medium text-gray-700"
             >
               {field.name}
-              {field.isRequired && <span className="text-blue-500 ml-1">*</span>}
+              {field.isRequired && <span className="text-red-500 ml-1">*</span>}
             </label>
             {field.description && (
               <p className="text-sm text-gray-500 mb-0">{field.description}</p>
@@ -238,7 +246,7 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
               className="block text-sm font-medium text-gray-700"
             >
               {field.name}
-              {field.isRequired && <span className="text-blue-500 ml-1">*</span>}
+              {field.isRequired && <span className="text-red-500 ml-1">*</span>}
             </label>
             {field.description && (
               <p className="text-sm text-gray-500 mb-0">{field.description}</p>
@@ -255,7 +263,7 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
               className="block text-sm font-medium text-gray-700"
             >
               {field.name}
-              {field.isRequired && <span className="text-blue-500 ml-1">*</span>}
+              {field.isRequired && <span className="text-red-500 ml-1">*</span>}
             </label>
             {field.description && (
               <p className="text-sm text-gray-500 mb-0">{field.description}</p>
@@ -277,7 +285,7 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
               className="block text-sm font-medium text-gray-700"
             >
               {field.name}
-              {field.isRequired && <span className="text-blue-500 ml-1">*</span>}
+              {field.isRequired && <span className="text-red-500 ml-1">*</span>}
             </label>
             {field.description && (
               <p className="text-sm text-gray-500 mb-0">{field.description}</p>
@@ -299,7 +307,7 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
               className="block text-sm font-medium text-gray-700"
             >
               {field.name}
-              {field.isRequired && <span className="text-blue-500 ml-1">*</span>}
+              {field.isRequired && <span className="text-red-500 ml-1">*</span>}
             </label>
             {field.description && (
               <p className="text-sm text-gray-500 mb-0">{field.description}</p>
@@ -322,32 +330,32 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
 
   return (
     <Card>
-    <CardHeader className="text-center border-b pb-6">
-      <CardTitle className="text-2xl font-bold">
-        {initialData ? 'Edit Report' : 'Create Report'}
-      </CardTitle>
-      <div className="mt-4 space-y-2">
-        <div className="grid grid-cols-2 gap-4 text-left">
-          <div className="flex items-center">
-            <span className="font-semibold w-32">Player:</span>
-            <span>{studentName}</span>
+      <CardHeader className="text-center border-b pb-6">
+        <CardTitle className="text-2xl font-bold">
+          {initialData ? 'Edit Report' : 'Create Report'}
+        </CardTitle>
+        <div className="mt-4 space-y-2">
+          <div className="grid grid-cols-2 gap-4 text-left">
+            <div className="flex items-center">
+              <span className="font-semibold w-32">Player:</span>
+              <span>{studentName}</span>
+            </div>
+            <div className="flex items-center">
+              <span className="font-semibold w-32">Current Group:</span>
+              <span>{groupName}</span>
+            </div>
           </div>
-          <div className="flex items-center">
-            <span className="font-semibold w-32">Current Group:</span>
-            <span>{groupName}</span>
+          <div className="grid grid-cols-2 gap-4 text-left">
+            <div className="flex items-center">
+              <span className="font-semibold w-32">Date of Birth:</span>
+              <span>{dateOfBirth ? new Date(dateOfBirth).toLocaleDateString('en-GB') : 'Not provided'}</span>
+            </div>
+            <div className="flex items-center">
+              <span className="font-semibold w-32">Age:</span>
+              <span>{age ? `${age} years` : 'Not provided'}</span>
+            </div>
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-4 text-left">
-          <div className="flex items-center">
-            <span className="font-semibold w-32">Date of Birth:</span>
-            <span>{dateOfBirth ? new Date(dateOfBirth).toLocaleDateString('en-GB') : 'Not provided'}</span>
-          </div>
-          <div className="flex items-center">
-            <span className="font-semibold w-32">Age:</span>
-            <span>{age ? `${age} years` : 'Not provided'}</span>
-          </div>
-        </div>
-      </div>
         
         <div className="mt-3 p-2 rounded-lg"> 
           <div className="w-full mx-auto flex justify-end">
@@ -382,7 +390,7 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
           </Alert>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-0">
+        <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-0">
           {template.sections
             .sort((a, b) => a.order - b.order)
             .map((section) => (
@@ -403,7 +411,7 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
                         {renderField(section, field)}
                         {touched[section.name]?.[field.name] && 
                          validateField(section, field) && (
-                          <p className="text-sm text-blue-500 mt-1">
+                          <p className="text-sm text-red-500 mt-1">
                             {validateField(section, field)}
                           </p>
                         )}
@@ -413,7 +421,7 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
               </div>
             ))}
 
-          <div className="space-y-2">
+          <div className="space-y-2 mb-8">
             <label 
               htmlFor="recommendedGroup"
               className="block text-sm font-medium text-gray-700"
@@ -436,20 +444,40 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
             </select>
           </div>
 
-          <div className="flex justify-end space-x-4 mt-4">
+          <div className="h-4"></div>
+          <div className="flex justify-end space-x-4">
             <button
               type="button"
               onClick={onCancel}
               className="px-4 py-2 border rounded-md hover:bg-gray-50"
-              disabled={isSubmitting}
+              disabled={isSubmitting || isSavingAndNext}
             >
               Cancel
             </button>
+            {onSaveAndNext && (
+              <button
+                type="button"
+                onClick={(e) => handleSubmit(e, true)}
+                className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 
+                         disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isSubmitting || isSavingAndNext}
+              >
+                {isSavingAndNext ? (
+                  <span className="flex items-center">
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Saving...
+                  </span>
+                ) : 'Save and Next'}
+              </button>
+            )}
             <button
               type="submit"
               className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 
                        disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={isSubmitting}
+              disabled={isSubmitting || isSavingAndNext}
             >
               {isSubmitting ? (
                 <span className="flex items-center">
@@ -459,7 +487,7 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
                   </svg>
                   Saving...
                 </span>
-              ) : initialData ? 'Update Report' : 'Save Report'}
+              ) : (initialData ? 'Update Report' : 'Save and Close')}
             </button>
           </div>
         </form>

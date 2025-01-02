@@ -219,7 +219,7 @@ const Dashboard = () => {
       <div className="flex flex-col space-y-4">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-gray-900">
-            {isAdmin ? 'Tennis Reports Dashboard' : 'My Tennis Reports'}
+            {isAdmin ? 'Tennis Reports Dashboard' : 'Tennis Reports'}
           </h1>
           
           {/* Mobile Menu Button */}

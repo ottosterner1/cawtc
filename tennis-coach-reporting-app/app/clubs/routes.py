@@ -800,16 +800,50 @@ def accept_invitation(token):
 @admin_required
 def manage_players(club_id):
     club = TennisClub.query.get_or_404(club_id)
+    print(f"MANAGE PLAYERS ROUTE CALLED for club {club_id}")
     
     # Get all teaching periods
     periods = TeachingPeriod.query.filter_by(
         tennis_club_id=club.id
     ).order_by(TeachingPeriod.start_date.desc()).all()
-    
-    # Get selected period (default to most recent if none selected)
+    current_app.logger.info(f"Found {len(periods)} total teaching periods for club {club.id}")
+
+    # Get selected period from query params
     selected_period_id = request.args.get('period', type=int)
+    current_app.logger.info(f"Initial selected_period_id from query params: {selected_period_id}")
+
+    # If no period selected, find the latest period that has players
     if not selected_period_id and periods:
-        selected_period_id = periods[0].id
+        # Get all period IDs that have players
+        period_ids_with_players = (db.session.query(ProgrammePlayers.teaching_period_id)
+            .filter(ProgrammePlayers.tennis_club_id == club.id)
+            .distinct()
+            .all())
+        period_ids = [p[0] for p in period_ids_with_players]
+        current_app.logger.info(f"Found periods with players: {period_ids}")
+        
+        if period_ids:
+            # Get the latest period that has players
+            latest_period = (TeachingPeriod.query
+                .filter(
+                    TeachingPeriod.id.in_(period_ids),
+                    TeachingPeriod.tennis_club_id == club.id
+                )
+                .order_by(TeachingPeriod.start_date.desc())
+                .first())
+            
+            if latest_period:
+                selected_period_id = latest_period.id
+                current_app.logger.info(
+                    f"Selected latest period with players: {latest_period.name} "
+                    f"(ID: {latest_period.id}, start_date: {latest_period.start_date})"
+                )
+            else:
+                current_app.logger.info("No teaching periods found with players")
+        else:
+            current_app.logger.info("No periods found with any players assigned")
+
+    current_app.logger.info(f"Final selected_period_id: {selected_period_id}")
     
     # Get players for selected period
     players = []

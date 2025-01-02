@@ -33,7 +33,7 @@ export interface ReportTemplate {
   description?: string;
   sections: TemplateSection[];
   isActive: boolean;
-  assignedGroups: Group[];
+  assignedGroups?: { id: number; name: string; }[];
 }
 
 export interface GroupTemplate {
@@ -156,6 +156,7 @@ export interface DynamicReportFormProps {
   }) => Promise<void>;
   onCancel: () => void;
   isSubmitting?: boolean;
+  onSaveAndNext?: (data: any) => Promise<void>; 
 }
 
 export interface ProgressOptionsProps {
