@@ -1,3 +1,8 @@
+from functools import lru_cache
+import os
+import traceback
+import boto3
+from flask import current_app
 from flask_login import UserMixin
 from app import db
 from datetime import datetime, timezone, timedelta
@@ -95,6 +100,7 @@ class TennisClub(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     subdomain = db.Column(db.String(50), nullable=False)
+    logo_url = db.Column(db.String(255))
     created_at = db.Column(db.DateTime(timezone=True), server_default=text('CURRENT_TIMESTAMP'))
 
     # Relationships
@@ -103,6 +109,49 @@ class TennisClub(db.Model):
     teaching_periods = db.relationship('TeachingPeriod', back_populates='tennis_club', lazy='dynamic')
     students = db.relationship('Student', back_populates='tennis_club', lazy='dynamic')
     programme_players = db.relationship('ProgrammePlayers', back_populates='tennis_club', lazy='dynamic')
+    
+    def _get_presigned_url_with_timestamp(self):
+        """Generate and cache presigned URL with timestamp"""
+        if not self.logo_url:
+            return None, None
+            
+        try:
+            s3_client = boto3.client(
+                's3',
+                aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
+                aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
+                region_name=os.environ.get('AWS_S3_REGION')
+            )
+            
+            # Increased expiration time to 1 hour (3600 seconds)
+            url = s3_client.generate_presigned_url(
+                'get_object',
+                Params={
+                    'Bucket': os.environ.get('AWS_S3_BUCKET'),
+                    'Key': self.logo_url,
+                    'ResponseContentType': 'image/*'  # Ensure proper content type
+                },
+                ExpiresIn=3600
+            )
+            
+            return url, datetime.now(timezone.utc)
+        except Exception as e:
+            current_app.logger.error(f"Error generating presigned URL: {str(e)}")
+            return None, None
+
+    @property
+    def logo_presigned_url(self):
+        """Get presigned URL with improved caching"""
+        url, timestamp = self._get_presigned_url_with_timestamp()
+        
+        # If URL is None or more than 45 minutes old, generate a new one
+        if url is None or timestamp is None or \
+           datetime.now(timezone.utc) - timestamp > timedelta(minutes=45):
+            # Clear the cache and generate new URL
+            self._get_presigned_url_with_timestamp.cache_clear()
+            url, _ = self._get_presigned_url_with_timestamp()
+            
+        return url if url else ''
 
 class User(UserMixin, db.Model):
     __tablename__ = 'user'

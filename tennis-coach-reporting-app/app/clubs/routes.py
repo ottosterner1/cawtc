@@ -1,3 +1,5 @@
+import os
+import boto3
 from flask import Blueprint, app, jsonify, request, render_template, flash, redirect, url_for, session, make_response, current_app
 from sqlalchemy import case
 from app import db
@@ -14,14 +16,15 @@ from datetime import datetime, timezone
 import pytz
 import json
 from app.utils.email import send_coach_invitation
-import secrets  # Add this import
+import secrets 
+from app.utils.s3 import upload_file_to_s3, allowed_file
 
 # Get UK timezone
 uk_timezone = pytz.timezone('Europe/London')
 
 club_management = Blueprint('club_management', __name__, url_prefix='/clubs') 
 
-ALLOWED_EXTENSIONS = {'csv'}  # Since we only want CSV files to upload players
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'csv'}
 
 # Add this helper function
 def allowed_file(filename):
@@ -1379,3 +1382,96 @@ def get_teaching_periods():
         'start_date': period.start_date.strftime('%Y-%m-%d'),
         'end_date': period.end_date.strftime('%Y-%m-%d')
     } for period in periods])
+
+@club_management.route('/manage/<int:club_id>/logo', methods=['POST'])
+@login_required
+@admin_required
+def upload_logo(club_id):
+    current_app.logger.info(f"Starting logo upload for club {club_id}")
+    
+    if 'logo' not in request.files:
+        current_app.logger.warning("No logo file in request")
+        flash('No file uploaded', 'error')
+        return redirect(url_for('club_management.manage_club', club_id=club_id))
+        
+    file = request.files['logo']
+    if file.filename == '':
+        current_app.logger.warning("Empty filename")
+        flash('No file selected', 'error')
+        return redirect(url_for('club_management.manage_club', club_id=club_id))
+        
+    if file and allowed_file(file.filename):
+        try:
+            current_app.logger.info(f"Attempting to upload file: {file.filename}")
+            
+            # Get club before upload
+            club = TennisClub.query.get_or_404(club_id)
+            if not club:
+                current_app.logger.error(f"Club {club_id} not found")
+                flash('Club not found', 'error')
+                return redirect(url_for('main.home'))
+
+            # Upload to S3
+            bucket_name = os.environ.get('AWS_S3_BUCKET')
+            if not bucket_name:
+                current_app.logger.error("AWS_S3_BUCKET not configured")
+                flash('Server configuration error', 'error')
+                return redirect(url_for('club_management.manage_club', club_id=club_id))
+
+            current_app.logger.info(f"Using bucket: {bucket_name}")
+            
+            # Store the old logo URL if it exists
+            old_logo_url = club.logo_url
+            
+            # Upload new logo with subdomain
+            file_url = upload_file_to_s3(file, bucket_name, club.subdomain)
+            
+            if file_url:
+                current_app.logger.info(f"File uploaded successfully to: {file_url}")
+                
+                # Delete old logo from S3 if it exists
+                if old_logo_url:
+                    try:
+                        old_key = old_logo_url.split('.amazonaws.com/')[-1]
+                        s3_client = boto3.client(
+                            's3',
+                            aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
+                            aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
+                            region_name=os.environ.get('AWS_S3_REGION')
+                        )
+                        s3_client.delete_object(
+                            Bucket=bucket_name,
+                            Key=old_key
+                        )
+                        current_app.logger.info(f"Deleted old logo: {old_key}")
+                    except Exception as e:
+                        current_app.logger.error(f"Error deleting old logo: {str(e)}")
+                
+                # Update database with new logo URL
+                club.logo_url = file_url
+                db.session.commit()
+                current_app.logger.info(f"Database updated with new logo URL for club {club_id}")
+                
+                flash('Logo uploaded successfully', 'success')
+            else:
+                current_app.logger.error("File upload failed")
+                flash('Error uploading file', 'error')
+                
+        except Exception as e:
+            current_app.logger.error(f"Error during upload: {str(e)}")
+            current_app.logger.error(traceback.format_exc())
+            flash(f'Error: {str(e)}', 'error')
+            db.session.rollback()
+    else:
+        current_app.logger.warning(f"Invalid file type: {file.filename}")
+        flash('Invalid file type. Please use PNG, JPG, or GIF', 'error')
+            
+    return redirect(url_for('club_management.manage_club', club_id=club_id))
+
+@club_management.route('/api/clubs/<int:club_id>/logo-url')
+@login_required
+def get_logo_url(club_id):
+    club = TennisClub.query.get_or_404(club_id)
+    if club.logo_url:
+        return jsonify({'url': club.logo_presigned_url})
+    return jsonify({'error': 'No logo found'}), 404
