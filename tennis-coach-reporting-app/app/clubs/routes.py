@@ -100,7 +100,7 @@ def onboard_club():
         flash(f'Error creating club: {str(e)}', 'error')
         return redirect(url_for('club_management.onboard_club'))
 
-@club_management.route('/manage/<int:club_id>', methods=['GET', 'POST'])
+@club_management.route('/manage/<int:club_id>/club', methods=['GET', 'POST'])
 @login_required
 def manage_club(club_id):
    print(f"Managing club {club_id} for user {current_user.id} with role {current_user.role}")
