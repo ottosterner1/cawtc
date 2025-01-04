@@ -5,6 +5,44 @@
     <div class="bg-white shadow-lg rounded-lg p-8">
         <h1 class="text-2xl font-bold mb-6">Manage Tennis Club</h1>
         
+        <!-- Club Logo Section -->
+        <div class="mb-8">
+            <h2 class="text-lg font-semibold mb-4">Club Logo</h2>
+            <div class="flex items-center space-x-4">
+                {% if club.logo_url %}
+                <div class="relative h-24 w-24">
+                    <!-- Loading placeholder -->
+                    <div class="absolute inset-0 bg-gray-100 animate-pulse" id="logo-loading"></div>
+                    <img src="{{ club.logo_presigned_url }}" 
+                         alt="{{ club.name }} logo" 
+                         class="h-24 w-auto"
+                         onload="this.previousElementSibling.style.display='none'"
+                         onerror="handleImageError(this)">
+                </div>
+                {% else %}
+                <div class="h-24 w-24 bg-gray-100 flex items-center justify-center rounded">
+                    <span class="text-gray-400">No logo</span>
+                </div>
+                {% endif %}
+                
+                <form action="{{ url_for('club_management.upload_logo', club_id=club.id) }}" 
+                      method="POST" 
+                      enctype="multipart/form-data"
+                      class="flex-1">
+                    <div class="flex items-center space-x-2">
+                        <input type="file" 
+                               name="logo" 
+                               accept="image/png,image/jpeg,image/gif"
+                               class="flex-1">
+                        <button type="submit" 
+                                class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                            Upload Logo
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
         <form method="POST">
             <div class="mb-4">
                 <label for="name" class="block text-gray-700 mb-2">Club Name</label>
@@ -35,4 +73,29 @@
         </form>
     </div>
 </div>
+
+<script>
+    async function handleImageError(img) {
+        try {
+            const response = await fetch(`/api/clubs/{{ club.id }}/logo-url`);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.url) {
+                    img.src = data.url;
+                }
+            }
+        } catch (error) {
+            console.error('Error refreshing logo URL:', error);
+            img.style.display = 'none';
+        }
+    }
+
+    // Refresh URL periodically before it expires
+    setInterval(async () => {
+        const img = document.querySelector('img[alt="{{ club.name }} logo"]');
+        if (img) {
+            await handleImageError(img);
+        }
+    }, 3000000); // Refresh every 50 minutes
+</script>
 {% endblock %}
