@@ -110,7 +110,6 @@ class TennisClub(db.Model):
     students = db.relationship('Student', back_populates='tennis_club', lazy='dynamic')
     programme_players = db.relationship('ProgrammePlayers', back_populates='tennis_club', lazy='dynamic')
     
-    @lru_cache(maxsize=128)
     def _get_presigned_url_with_timestamp(self):
         """Generate and cache presigned URL with timestamp"""
         if not self.logo_url:
@@ -124,33 +123,35 @@ class TennisClub(db.Model):
                 region_name=os.environ.get('AWS_S3_REGION')
             )
             
+            # Increased expiration time to 1 hour (3600 seconds)
             url = s3_client.generate_presigned_url(
                 'get_object',
                 Params={
                     'Bucket': os.environ.get('AWS_S3_BUCKET'),
-                    'Key': self.logo_url
+                    'Key': self.logo_url,
+                    'ResponseContentType': 'image/*'  # Ensure proper content type
                 },
                 ExpiresIn=3600
             )
             
-            return url, datetime.now()
+            return url, datetime.now(timezone.utc)
         except Exception as e:
             current_app.logger.error(f"Error generating presigned URL: {str(e)}")
             return None, None
 
     @property
     def logo_presigned_url(self):
-        """Get presigned URL with caching"""
+        """Get presigned URL with improved caching"""
         url, timestamp = self._get_presigned_url_with_timestamp()
         
-        # If URL is None or more than 50 minutes old, generate a new one
+        # If URL is None or more than 45 minutes old, generate a new one
         if url is None or timestamp is None or \
-           datetime.now() - timestamp > timedelta(minutes=50):
+           datetime.now(timezone.utc) - timestamp > timedelta(minutes=45):
             # Clear the cache and generate new URL
             self._get_presigned_url_with_timestamp.cache_clear()
             url, _ = self._get_presigned_url_with_timestamp()
             
-        return url
+        return url if url else ''
 
 class User(UserMixin, db.Model):
     __tablename__ = 'user'
