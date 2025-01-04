@@ -100,7 +100,7 @@ def onboard_club():
         flash(f'Error creating club: {str(e)}', 'error')
         return redirect(url_for('club_management.onboard_club'))
 
-@club_management.route('/manage/<int:club_id>', methods=['GET', 'POST'])
+@club_management.route('/manage/<int:club_id>/club', methods=['GET', 'POST'])
 @login_required
 def manage_club(club_id):
    print(f"Managing club {club_id} for user {current_user.id} with role {current_user.role}")
@@ -156,6 +156,10 @@ def manage_teaching_periods(club_id):
                 start_date = datetime.strptime(request.form['start_date'], '%Y-%m-%d')
                 end_date = datetime.strptime(request.form['end_date'], '%Y-%m-%d')
                 
+                # Get optional dates
+                next_period_start = request.form.get('next_period_start_date')
+                bookings_open = request.form.get('bookings_open_date')
+                
                 if start_date > end_date:
                     flash('Start date must be before end date', 'error')
                 else:
@@ -163,6 +167,8 @@ def manage_teaching_periods(club_id):
                         name=name,
                         start_date=start_date,
                         end_date=end_date,
+                        next_period_start_date=datetime.strptime(next_period_start, '%Y-%m-%d') if next_period_start else None,
+                        bookings_open_date=datetime.strptime(bookings_open, '%Y-%m-%d') if bookings_open else None,
                         tennis_club_id=club.id
                     )
                     db.session.add(period)
@@ -178,6 +184,19 @@ def manage_teaching_periods(club_id):
                 period.start_date = datetime.strptime(request.form['start_date'], '%Y-%m-%d')
                 period.end_date = datetime.strptime(request.form['end_date'], '%Y-%m-%d')
                 
+                # Handle optional dates
+                next_period_start = request.form.get('next_period_start_date')
+                bookings_open = request.form.get('bookings_open_date')
+                
+                period.next_period_start_date = (
+                    datetime.strptime(next_period_start, '%Y-%m-%d') 
+                    if next_period_start else None
+                )
+                period.bookings_open_date = (
+                    datetime.strptime(bookings_open, '%Y-%m-%d')
+                    if bookings_open else None
+                )
+                
                 if period.start_date > period.end_date:
                     flash('Start date must be before end date', 'error')
                 else:
@@ -189,7 +208,7 @@ def manage_teaching_periods(club_id):
                 period_id = request.form.get('period_id')
                 period = TeachingPeriod.query.get_or_404(period_id)
                 
-                if period.reports.count() > 0:  # Changed from if period.reports:
+                if period.reports.count() > 0:
                     flash('Cannot delete teaching period with existing reports', 'error')
                 else:
                     db.session.delete(period)
@@ -781,16 +800,50 @@ def accept_invitation(token):
 @admin_required
 def manage_players(club_id):
     club = TennisClub.query.get_or_404(club_id)
+    print(f"MANAGE PLAYERS ROUTE CALLED for club {club_id}")
     
     # Get all teaching periods
     periods = TeachingPeriod.query.filter_by(
         tennis_club_id=club.id
     ).order_by(TeachingPeriod.start_date.desc()).all()
-    
-    # Get selected period (default to most recent if none selected)
+    current_app.logger.info(f"Found {len(periods)} total teaching periods for club {club.id}")
+
+    # Get selected period from query params
     selected_period_id = request.args.get('period', type=int)
+    current_app.logger.info(f"Initial selected_period_id from query params: {selected_period_id}")
+
+    # If no period selected, find the latest period that has players
     if not selected_period_id and periods:
-        selected_period_id = periods[0].id
+        # Get all period IDs that have players
+        period_ids_with_players = (db.session.query(ProgrammePlayers.teaching_period_id)
+            .filter(ProgrammePlayers.tennis_club_id == club.id)
+            .distinct()
+            .all())
+        period_ids = [p[0] for p in period_ids_with_players]
+        current_app.logger.info(f"Found periods with players: {period_ids}")
+        
+        if period_ids:
+            # Get the latest period that has players
+            latest_period = (TeachingPeriod.query
+                .filter(
+                    TeachingPeriod.id.in_(period_ids),
+                    TeachingPeriod.tennis_club_id == club.id
+                )
+                .order_by(TeachingPeriod.start_date.desc())
+                .first())
+            
+            if latest_period:
+                selected_period_id = latest_period.id
+                current_app.logger.info(
+                    f"Selected latest period with players: {latest_period.name} "
+                    f"(ID: {latest_period.id}, start_date: {latest_period.start_date})"
+                )
+            else:
+                current_app.logger.info("No teaching periods found with players")
+        else:
+            current_app.logger.info("No periods found with any players assigned")
+
+    current_app.logger.info(f"Final selected_period_id: {selected_period_id}")
     
     # Get players for selected period
     players = []

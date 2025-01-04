@@ -87,11 +87,7 @@ const EditReportApp: React.FC = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          content: formData,
-          recommendedGroupId: formData.recommendedGroupId,
-          template_id: template?.id
-        }),
+        body: JSON.stringify(formData),
       });
 
       if (!response.ok) {
@@ -187,7 +183,7 @@ const EditReportApp: React.FC = () => {
         groupName={report.groupName}
         initialData={initialFormData}
         onSubmit={handleSubmit}
-        onCancel={() => window.location.href = `/reports/${reportId}`}
+        onCancel={() => window.location.href = `/dashboard`}
       />
     </div>
   );

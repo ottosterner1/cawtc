@@ -120,6 +120,64 @@ class EnhancedWiltonReportGenerator:
 
             canvas.restoreState()
 
+    def draw_next_term_checkboxes(self, c, page2_coords, next_term):
+        """Draw checkboxes for the next term options."""
+        next_term_coords = page2_coords.get('next_term')
+
+        if next_term_coords:
+            # Mapping terms to their respective x-coordinates
+            term_to_x = {
+                'Autumn': next_term_coords['autumn_x'],
+                'Spring': next_term_coords['spring_x'],
+                'Summer': next_term_coords['summer_x']
+            }
+            y = next_term_coords['y']
+
+            # Draw the checkbox for the determined term
+            if next_term in term_to_x:
+                self.draw_checkbox(c, term_to_x[next_term], y, True)
+
+
+
+    def get_next_term(self, current_term):
+        """Determine the next term based on the current term."""
+        if 'Autumn' in current_term:
+            return 'Spring'
+        elif 'Spring' in current_term:
+            return 'Summer'
+        elif 'Summer' in current_term:
+            return 'Autumn'
+        return current_term
+
+    def draw_group_recommendation_checkbox(self, c, data, rec_coords):
+        """Draw the group recommendation checkbox based on the recommended group."""
+        recommended_group = data.get('recommended_group')
+        print(f"Recommended group: {recommended_group}")
+        # If no recommendation, don't draw any tick
+        if not recommended_group:
+            return
+            
+        # Extract the group level (Red, Orange, Green, Yellow) from the full group name
+        group_level = None
+        if 'Tots' in recommended_group:
+            group_level = 'tots'
+        elif 'Red' in recommended_group:
+            group_level = 'red'
+        elif 'Orange' in recommended_group:
+            group_level = 'orange'
+        elif 'Green' in recommended_group:
+            group_level = 'green'
+        elif 'Yellow' in recommended_group:
+            group_level = 'yellow'
+        elif 'Performance' in recommended_group:
+            group_level = 'performance'
+        
+        print(f"Group level: {group_level}")
+
+        # Draw the checkbox if we have coordinates for this group level
+        if group_level and f'{group_level}_x' in rec_coords:
+            self.draw_checkbox(c, rec_coords[f'{group_level}_x'], rec_coords['y'], True)
+
     def generate_page_overlay(self, data, config, page_num):
         """Generate a single page overlay."""
         packet = BytesIO()
@@ -141,9 +199,9 @@ class EnhancedWiltonReportGenerator:
             for field, data_key in field_mappings.items():
                 if field in coords and data_key in data:
                     self.draw_diagonal_text(c, data[data_key], 
-                                         coords[field][0], 
-                                         coords[field][1])
-            
+                                            coords[field][0], 
+                                            coords[field][1])
+        
         elif page_num == 2:
             # Report card page - add checkboxes only if sections exist
             sections = config.get('page2', {}).get('sections', {})
@@ -164,45 +222,58 @@ class EnhancedWiltonReportGenerator:
                             self.draw_checkbox(c, section_coords['not_yet_x'], y_pos, True)
                         y_pos -= section_coords['spacing']
             
-            # Add group recommendation checkbox only if it exists in config
+            # Add group recommendation checkbox
             rec_coords = config.get('page2', {}).get('group_recommendation')
-            if rec_coords and 'group_recommendation' in data:
-                if data['group_recommendation'] == 'Red' and 'red_x' in rec_coords:
-                    self.draw_checkbox(c, rec_coords['red_x'], rec_coords['y'], True)
-                elif data['group_recommendation'] == 'Orange' and 'orange_x' in rec_coords:
-                    self.draw_checkbox(c, rec_coords['orange_x'], rec_coords['y'], True)
+
+            if rec_coords:
+                self.draw_group_recommendation_checkbox(c, data, rec_coords)
+
+            # Add next term checkboxes
+            next_term_coords = config.get('page2', {}).get('next_term')
+
+            if next_term_coords:
+                current_term = data.get('term', '')
+                next_term = self.get_next_term(current_term)
+                self.draw_next_term_checkboxes(c, config['page2'], next_term)
+
+            # Add teaching period dates at the bottom
+            teaching_period = data.get('teaching_period')
+            if teaching_period:
+                # Format dates as DD MM
+                date_coords = config.get('page2', {}).get('teaching_period_dates', {})
+                if teaching_period.get('next_period_start_date') and 'next_term_start' in date_coords:
+                    next_start = datetime.strptime(teaching_period['next_period_start_date'], '%Y-%m-%d')
+                    day = next_start.strftime('%d')
+                    month = next_start.strftime('%m')
+                    coords = date_coords['next_term_start']
+                    c.setFont(self.font_name, 20)
+                    
+                    # Draw each digit of the day
+                    c.drawString(coords['x'], coords['y'], day[0])
+                    c.drawString(coords['x'] + 20, coords['y'], day[1])
+                    
+                    # Draw each digit of the month
+                    c.drawString(coords['x'] + 57, coords['y'], month[0])
+                    c.drawString(coords['x'] + 75, coords['y'], month[1])
+
+                if teaching_period.get('bookings_open_date') and 'bookings_open' in date_coords:
+                    bookings_open = datetime.strptime(teaching_period['bookings_open_date'], '%Y-%m-%d')
+                    day = bookings_open.strftime('%d')
+                    month = bookings_open.strftime('%m')
+                    coords = date_coords['bookings_open']
+                    c.setFont(self.font_name, 20)
+                    
+                    # Draw each digit of the day
+                    c.drawString(coords['x'], coords['y'], day[0])
+                    c.drawString(coords['x'] + 20, coords['y'], day[1])
+                    
+                    # Draw each digit of the month
+                    c.drawString(coords['x'] + 57, coords['y'], month[0])
+                    c.drawString(coords['x'] + 75, coords['y'], month[1])
         
         c.save()
         packet.seek(0)
         return PdfReader(packet)
-
-    def generate_report(self, template_path, output_path, data):
-        """Generate a filled report PDF."""
-        # Get group configuration
-        group_config = self.get_group_config(data['group'])
-        
-        # Read the template
-        template = PdfReader(open(template_path, "rb"))
-        output = PdfWriter()
-        
-        # Process each page
-        for page_num in range(len(template.pages)):
-            # Get template page
-            template_page = template.pages[page_num]
-            
-            # Generate and merge overlay
-            overlay = self.generate_page_overlay(data, group_config, page_num + 1)
-            template_page.merge_page(overlay.pages[0])
-            
-            # Add the merged page to output
-            output.add_page(template_page)
-        
-        # Ensure output directory exists
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        
-        # Write the output PDF
-        with open(output_path, "wb") as output_file:
-            output.write(output_file)
 
     @classmethod
     def batch_generate_reports(cls, period_id, config_path=None):
@@ -216,6 +287,11 @@ class EnhancedWiltonReportGenerator:
         # Get all completed reports for the period with related data
         reports = Report.query.filter_by(teaching_period_id=period_id)\
             .join(Report.programme_player)\
+            .join(Report.teaching_period)\
+            .options(
+                db.joinedload(Report.recommended_group),
+                db.joinedload(Report.teaching_period)  # Eager load teaching period
+            )\
             .all()
         
         if not reports:
@@ -250,7 +326,6 @@ class EnhancedWiltonReportGenerator:
                 group_name = report.tennis_group.name.replace(' ', '_').lower()
                 if report.programme_player and report.programme_player.group_time:
                     time = report.programme_player.group_time
-                    # Format time as HHMM (e.g., 0100PM)
                     start_time = time.start_time.strftime('%I%M%p').lower()
                     end_time = time.end_time.strftime('%I%M%p').lower()
                     day = time.day_of_week.value.lower()
@@ -267,14 +342,18 @@ class EnhancedWiltonReportGenerator:
                 filename = f"{student_name}_{group_name}_{term_name}_report.pdf"
                 output_path = os.path.join(full_group_dir, filename)
                 
-                # Prepare report data
+                # Prepare report data including teaching period dates
                 data = {
                     'player_name': report.student.name,
                     'coach_name': report.coach.name,
                     'term': report.teaching_period.name,
                     'group': report.tennis_group.name,
                     'content': report.content,
-                    'group_recommendation': 'Red' if 'Red' in report.recommended_group.name else 'Orange'
+                    'recommended_group': report.recommended_group.name if report.recommended_group else None,
+                    'teaching_period': {
+                        'next_period_start_date': report.teaching_period.next_period_start_date.strftime('%Y-%m-%d') if report.teaching_period.next_period_start_date else None,
+                        'bookings_open_date': report.teaching_period.bookings_open_date.strftime('%Y-%m-%d') if report.teaching_period.bookings_open_date else None
+                    }
                 }
                 
                 # Generate the report
@@ -290,6 +369,35 @@ class EnhancedWiltonReportGenerator:
             'error_details': errors,
             'output_directory': period_dir
         }
+
+
+    def generate_report(self, template_path, output_path, data):
+        """Generate a filled report PDF."""
+        # Get group configuration
+        group_config = self.get_group_config(data['group'])
+        
+        # Read the template
+        template = PdfReader(open(template_path, "rb"))
+        output = PdfWriter()
+        
+        # Process each page
+        for page_num in range(len(template.pages)):
+            # Get template page
+            template_page = template.pages[page_num]
+            
+            # Generate and merge overlay
+            overlay = self.generate_page_overlay(data, group_config, page_num + 1)
+            template_page.merge_page(overlay.pages[0])
+            
+            # Add the merged page to output
+            output.add_page(template_page)
+        
+        # Ensure output directory exists
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        
+        # Write the output PDF
+        with open(output_path, "wb") as output_file:
+            output.write(output_file)
 
     @classmethod
     def generate_single_report(cls, report_id, output_dir=None, config_path=None):
@@ -330,7 +438,7 @@ class EnhancedWiltonReportGenerator:
             'term': report.teaching_period.name,
             'group': report.tennis_group.name,
             'content': report.content,
-            'group_recommendation': 'Red' if 'Red' in report.recommended_group.name else 'Orange'
+            'recommended_group': report.recommended_group.name if report.recommended_group else None
         }
         
         # Generate the report

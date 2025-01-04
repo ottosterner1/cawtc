@@ -16,23 +16,33 @@ interface PlayerData {
   groupName: string;
 }
 
+interface NextPlayer {
+  id: number;
+  student_name: string;
+  group_name: string;
+  group_id: number;
+  found_in_same_group: boolean;
+}
+
 const CreateReportApp = () => {
   const [template, setTemplate] = useState<any>(null);
   const [playerData, setPlayerData] = useState<PlayerData | null>(null);
+  const [nextPlayer, setNextPlayer] = useState<NextPlayer | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Get data from the DOM
   const rootElement = document.getElementById('create-report-root');
   const playerId = rootElement?.dataset.playerId;
 
   useEffect(() => {
-    const fetchTemplate = async () => {
+    const fetchData = async () => {
       try {
+        // Fetch template and current player data
         const response = await fetch(`/api/reports/template/${playerId}`);
         if (!response.ok) throw new Error('Failed to fetch template');
         const data = await response.json();
-        // Store the template and player data separately
         setTemplate(data.template);
         setPlayerData({
           studentName: data.player.studentName,
@@ -40,20 +50,28 @@ const CreateReportApp = () => {
           age: data.player.age,
           groupName: data.player.groupName
         });
+        
+        // Fetch next player info
+        const nextPlayerResponse = await fetch(`/api/programme-players/next/${playerId}`);
+        if (nextPlayerResponse.ok) {
+          const nextPlayerData = await nextPlayerResponse.json();
+          setNextPlayer(nextPlayerData);
+        }
       } catch (err) {
         setError((err as Error).message);
-        console.error('Error fetching template:', err);
+        console.error('Error fetching data:', err);
       } finally {
         setLoading(false);
       }
     };
 
     if (playerId) {
-      fetchTemplate();
+      fetchData();
     }
   }, [playerId]);
 
   const handleSubmit = async (data: Record<string, any>) => {
+    setIsSubmitting(true);
     try {
       const formData: FormData = {
         content: data.content,
@@ -78,6 +96,44 @@ const CreateReportApp = () => {
     } catch (err) {
       console.error('Error submitting report:', err);
       throw err;
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSaveAndNext = async (data: Record<string, any>) => {
+    setIsSubmitting(true);
+    try {
+      const formData: FormData = {
+        content: data.content,
+        recommendedGroupId: Number(data.recommendedGroupId),
+        template_id: data.template_id,
+      };
+
+      const response = await fetch(`/api/reports/create/${playerId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to submit report');
+      }
+
+      // Navigate to next player's report page if available
+      if (nextPlayer) {
+        window.location.href = `/report/new/${nextPlayer.id}`;
+      } else {
+        window.location.href = '/dashboard';
+      }
+    } catch (err) {
+      console.error('Error submitting report:', err);
+      throw err;
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -94,6 +150,8 @@ const CreateReportApp = () => {
       groupName={playerData.groupName}
       onSubmit={handleSubmit}
       onCancel={() => window.location.href = '/dashboard'}
+      isSubmitting={isSubmitting}
+      onSaveAndNext={nextPlayer ? handleSaveAndNext : undefined}
     />
   );
 };

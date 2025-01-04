@@ -305,8 +305,6 @@ def serialize_coach(coach):
         'email': coach.email
     }
 
-
-# Keep your existing dashboard route for the initial page load
 @main.route('/dashboard')
 @login_required
 @verify_club_access()
@@ -336,24 +334,45 @@ def dashboard_stats():
         tennis_club_id = current_user.tennis_club_id
         selected_period_id = request.args.get('period', type=int)
         
-        # Base queries - filter by coach if not admin
-        players_query = ProgrammePlayers.query.filter_by(tennis_club_id=tennis_club_id)
+        # Base query - include both template active checks
+        base_query = (ProgrammePlayers.query
+            .select_from(ProgrammePlayers)
+            .join(TennisGroup, ProgrammePlayers.group_id == TennisGroup.id)
+            .join(GroupTemplate, and_(
+                TennisGroup.id == GroupTemplate.group_id,
+                GroupTemplate.is_active == True
+            ))
+            .join(ReportTemplate, and_(
+                ReportTemplate.id == GroupTemplate.template_id,
+                ReportTemplate.is_active == True
+            ))
+            .filter(ProgrammePlayers.tennis_club_id == tennis_club_id))
+
         if not (current_user.is_admin or current_user.is_super_admin):
-            players_query = players_query.filter_by(coach_id=current_user.id)
+            base_query = base_query.filter(ProgrammePlayers.coach_id == current_user.id)
             
         if selected_period_id:
-            players_query = players_query.filter_by(teaching_period_id=selected_period_id)
+            base_query = base_query.filter(ProgrammePlayers.teaching_period_id == selected_period_id)
             
-        total_students = players_query.count()
+        total_students = base_query.count()
         
-        # Get reports - filter by programme player's coach if not admin
-        reports_query = Report.query.join(ProgrammePlayers).filter(
-            ProgrammePlayers.tennis_club_id == tennis_club_id
-        )
+        # Get reports
+        reports_query = (Report.query
+            .select_from(Report)
+            .join(ProgrammePlayers)
+            .join(TennisGroup, ProgrammePlayers.group_id == TennisGroup.id)
+            .join(GroupTemplate, and_(
+                TennisGroup.id == GroupTemplate.group_id,
+                GroupTemplate.is_active == True
+            ))
+            .join(ReportTemplate, and_(
+                ReportTemplate.id == GroupTemplate.template_id,
+                ReportTemplate.is_active == True
+            ))
+            .filter(ProgrammePlayers.tennis_club_id == tennis_club_id))
+
         if not (current_user.is_admin or current_user.is_super_admin):
-            reports_query = reports_query.filter(
-                ProgrammePlayers.coach_id == current_user.id  # Filter by the coach of the programme player
-            )
+            reports_query = reports_query.filter(ProgrammePlayers.coach_id == current_user.id)
             
         if selected_period_id:
             reports_query = reports_query.filter(Report.teaching_period_id == selected_period_id)
@@ -361,23 +380,24 @@ def dashboard_stats():
         total_reports = reports_query.count()
         completion_rate = round((total_reports / total_students * 100) if total_students > 0 else 0, 1)
         
-        # Get all periods
-        periods = TeachingPeriod.query.filter_by(
-            tennis_club_id=tennis_club_id
-        ).order_by(TeachingPeriod.start_date.desc()).all()
-        
         # Get group stats
-        group_stats_query = db.session.query(
+        group_stats_query = (db.session.query(
             TennisGroup.name,
             func.count(distinct(ProgrammePlayers.id)).label('count'),
             func.count(distinct(Report.id)).label('reports_completed')
-        ).join(
-            ProgrammePlayers, TennisGroup.id == ProgrammePlayers.group_id
-        ).outerjoin(
-            Report, ProgrammePlayers.id == Report.programme_player_id
-        ).filter(
-            ProgrammePlayers.tennis_club_id == tennis_club_id
         )
+        .select_from(TennisGroup)
+        .join(GroupTemplate, and_(
+            TennisGroup.id == GroupTemplate.group_id,
+            GroupTemplate.is_active == True
+        ))
+        .join(ReportTemplate, and_(
+            ReportTemplate.id == GroupTemplate.template_id,
+            ReportTemplate.is_active == True
+        ))
+        .join(ProgrammePlayers, TennisGroup.id == ProgrammePlayers.group_id)
+        .outerjoin(Report, ProgrammePlayers.id == Report.programme_player_id)
+        .filter(ProgrammePlayers.tennis_club_id == tennis_club_id))
         
         if selected_period_id:
             group_stats_query = group_stats_query.filter(
@@ -401,29 +421,38 @@ def dashboard_stats():
             ).all()
             
             for coach in coaches:
-                coach_players = players_query.filter_by(coach_id=coach.id)
-                coach_reports = reports_query.filter(ProgrammePlayers.coach_id == coach.id)  # Match ProgrammePlayer's coach
+                # Create fresh queries for each coach
+                coach_players = base_query.filter(ProgrammePlayers.coach_id == coach.id).count()
+                coach_reports = reports_query.filter(ProgrammePlayers.coach_id == coach.id).count()
                 
                 coach_summaries.append({
                     'id': coach.id,
                     'name': coach.name,
-                    'total_assigned': coach_players.count(),
-                    'reports_completed': coach_reports.count()
+                    'total_assigned': coach_players,
+                    'reports_completed': coach_reports
                 })
 
         # Get group recommendations
-        recommendations_query = db.session.query(
+        recommendations_query = (db.session.query(
             TennisGroup.name.label('from_group'),
             func.count().label('count'),
             Report.recommended_group_id
-        ).join(
-            ProgrammePlayers, Report.programme_player_id == ProgrammePlayers.id
-        ).join(
-            TennisGroup, ProgrammePlayers.group_id == TennisGroup.id
-        ).filter(
+        )
+        .select_from(Report)
+        .join(ProgrammePlayers, Report.programme_player_id == ProgrammePlayers.id)
+        .join(TennisGroup, ProgrammePlayers.group_id == TennisGroup.id)
+        .join(GroupTemplate, and_(
+            TennisGroup.id == GroupTemplate.group_id,
+            GroupTemplate.is_active == True
+        ))
+        .join(ReportTemplate, and_(
+            ReportTemplate.id == GroupTemplate.template_id,
+            ReportTemplate.is_active == True
+        ))
+        .filter(
             ProgrammePlayers.tennis_club_id == tennis_club_id,
             Report.recommended_group_id.isnot(None)
-        )
+        ))
         
         if selected_period_id:
             recommendations_query = recommendations_query.filter(
@@ -435,14 +464,14 @@ def dashboard_stats():
                 ProgrammePlayers.coach_id == current_user.id
             )
             
-        recommendations_query = recommendations_query.group_by(
+        recommendations = recommendations_query.group_by(
             TennisGroup.name,
             Report.recommended_group_id
         ).all()
         
-        # Process recommendations to include target group names
+        # Process recommendations
         group_recommendations = []
-        for from_group, count, recommended_group_id in recommendations_query:
+        for from_group, count, recommended_group_id in recommendations:
             to_group = TennisGroup.query.get(recommended_group_id)
             if to_group:
                 group_recommendations.append({
@@ -455,7 +484,7 @@ def dashboard_stats():
             'periods': [{
                 'id': p.id,
                 'name': p.name
-            } for p in periods],
+            } for p in TeachingPeriod.query.filter_by(tennis_club_id=tennis_club_id).order_by(TeachingPeriod.start_date.desc()).all()],
             'stats': {
                 'totalStudents': total_students,
                 'totalReports': total_reports,
@@ -487,6 +516,76 @@ def dashboard_stats():
             }
         }), 500
 
+@main.route('/api/programme-players/next/<int:current_player_id>')
+@login_required
+@verify_club_access()
+def get_next_player(current_player_id):
+    try:
+        # Get current player to find their group and period
+        current_player = ProgrammePlayers.query.get_or_404(current_player_id)
+        current_group_id = current_player.group_id
+        current_period_id = current_player.teaching_period_id
+
+        # Base query - get all programme players for the club
+        base_query = (ProgrammePlayers.query
+            .join(Student, ProgrammePlayers.student_id == Student.id)  # Explicit join with Student
+            .join(TennisGroup, ProgrammePlayers.group_id == TennisGroup.id)  # Explicit join with TennisGroup
+            .outerjoin(
+                Report, 
+                and_(
+                    ProgrammePlayers.id == Report.programme_player_id,
+                    ProgrammePlayers.teaching_period_id == Report.teaching_period_id
+                )
+            )
+            .filter(
+                ProgrammePlayers.tennis_club_id == current_user.tennis_club_id,
+                ProgrammePlayers.teaching_period_id == current_period_id
+            )
+        )
+
+        if not (current_user.is_admin or current_user.is_super_admin):
+            base_query = base_query.filter(ProgrammePlayers.coach_id == current_user.id)
+
+        # First try to find the next player in the same group
+        next_player = (base_query
+            .filter(
+                ProgrammePlayers.group_id == current_group_id,
+                ProgrammePlayers.id > current_player_id,
+                Report.id.is_(None)  # No report submitted
+            )
+            .order_by(ProgrammePlayers.id)
+            .first()
+        )
+
+        # If no next player in same group, find first player without report in next group
+        if not next_player:
+            next_player = (base_query
+                .filter(
+                    TennisGroup.id > current_group_id,  # Next group
+                    Report.id.is_(None)  # No report submitted
+                )
+                .order_by(
+                    TennisGroup.id,
+                    Student.name
+                )
+                .first()
+            )
+
+        if next_player:
+            return jsonify({
+                'id': next_player.id,
+                'student_name': next_player.student.name,
+                'group_name': next_player.tennis_group.name,
+                'group_id': next_player.group_id,
+                'found_in_same_group': next_player.group_id == current_group_id
+            })
+        else:
+            return jsonify({'message': 'No more players need reports'}), 404
+
+    except Exception as e:
+        print(f"Error finding next player: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({'error': str(e)}), 500
 
 @main.route('/api/programme-players')
 @login_required
@@ -496,6 +595,32 @@ def programme_players():
         tennis_club_id = current_user.tennis_club_id
         selected_period_id = request.args.get('period', type=int)
         
+        current_app.logger.info(f"Initial selected_period_id: {selected_period_id}")
+        
+        # If no period selected, find the latest period that has players
+        if not selected_period_id:
+            # First get all period IDs that have players
+            period_ids_with_players = (db.session.query(ProgrammePlayers.teaching_period_id)
+                .filter(ProgrammePlayers.tennis_club_id == tennis_club_id)
+                .distinct()
+                .all())
+            period_ids = [p[0] for p in period_ids_with_players]
+            
+            current_app.logger.info(f"Period IDs with players: {period_ids}")
+            
+            if period_ids:
+                # Then get the latest of these periods
+                latest_period = (TeachingPeriod.query
+                    .filter(TeachingPeriod.id.in_(period_ids))
+                    .order_by(TeachingPeriod.start_date.desc())
+                    .first())
+                
+                if latest_period:
+                    selected_period_id = latest_period.id
+                    current_app.logger.info(f"Selected latest period with players: {latest_period.name} (ID: {latest_period.id})")
+        
+        current_app.logger.info(f"Final selected_period_id: {selected_period_id}")
+        
         # Base query - get all programme players for the club
         query = ProgrammePlayers.query.filter_by(
             tennis_club_id=tennis_club_id
@@ -503,6 +628,9 @@ def programme_players():
         
         if selected_period_id:
             query = query.filter_by(teaching_period_id=selected_period_id)
+            
+        if not (current_user.is_admin or current_user.is_super_admin):
+            query = query.filter_by(coach_id=current_user.id)
         
         players = query.join(
             Student, ProgrammePlayers.student_id == Student.id
@@ -515,7 +643,7 @@ def programme_players():
                 ProgrammePlayers.id == Report.programme_player_id,
                 ProgrammePlayers.teaching_period_id == Report.teaching_period_id
             )
-        ).outerjoin(  # Add this join
+        ).outerjoin(
             GroupTemplate, and_(
                 TennisGroup.id == GroupTemplate.group_id,
                 GroupTemplate.is_active == True
@@ -525,6 +653,7 @@ def programme_players():
             Student.name.label('student_name'),
             TennisGroup.name.label('group_name'),
             TennisGroup.id.label('group_id'),
+            ProgrammePlayers.teaching_period_id,
             ProgrammePlayers.group_time_id,
             TennisGroupTimes.day_of_week,
             TennisGroupTimes.start_time,
@@ -532,12 +661,13 @@ def programme_players():
             Report.id.label('report_id'),
             Report.coach_id,
             ProgrammePlayers.coach_id.label('assigned_coach_id'),
-            func.count(GroupTemplate.id).label('template_count')  # Add this
+            func.count(GroupTemplate.id).label('template_count')
         ).group_by(
             ProgrammePlayers.id,
             Student.name,
             TennisGroup.name,
             TennisGroup.id,
+            ProgrammePlayers.teaching_period_id,
             ProgrammePlayers.group_time_id,
             TennisGroupTimes.day_of_week,
             TennisGroupTimes.start_time,
@@ -545,13 +675,19 @@ def programme_players():
             Report.id,
             Report.coach_id,
             ProgrammePlayers.coach_id
+        ).order_by(
+            ProgrammePlayers.group_id,
+            Student.name
         ).all()
+        
+        current_app.logger.info(f"Found {len(players)} players for period {selected_period_id}")
         
         return jsonify([{
             'id': player.id,
             'student_name': player.student_name,
             'group_name': player.group_name,
             'group_id': player.group_id,
+            'teaching_period_id': player.teaching_period_id,
             'group_time_id': player.group_time_id,
             'time_slot': {
                 'day_of_week': player.day_of_week.value if player.day_of_week else None,
@@ -563,12 +699,13 @@ def programme_players():
             'can_edit': current_user.is_admin or current_user.is_super_admin or 
                        player.coach_id == current_user.id or 
                        player.assigned_coach_id == current_user.id,
-            'has_template': player.template_count > 0  # Add this
+            'has_template': player.template_count > 0,
+            'assigned_coach_id': player.assigned_coach_id 
         } for player in players])
         
     except Exception as e:
-        print(f"Error fetching programme players: {str(e)}")
-        print(traceback.format_exc())
+        current_app.logger.error(f"Error fetching programme players: {str(e)}")
+        current_app.logger.error(traceback.format_exc())
         return jsonify([]), 500
 
 @main.route('/upload', methods=['GET', 'POST'])
@@ -1513,7 +1650,7 @@ def manage_report_templates(club_id):
         return redirect(url_for('main.home'))
     return render_template('pages/report_templates.html')
 
-@main.route('/api/templates/group-assignments', methods=['GET', 'POST'])
+@main.route('/api/templates/group-assignments', methods=['GET', 'POST', 'DELETE'])
 @login_required
 @verify_club_access()
 def manage_group_templates():
@@ -1537,24 +1674,24 @@ def manage_group_templates():
                 tennis_club_id=current_user.tennis_club_id
             ).first_or_404()
             
-            # Check if association already exists
+            # Check if group already has an active template
             existing_assoc = GroupTemplate.query.filter_by(
-                group_id=group_id
+                group_id=group_id,
+                is_active=True
             ).first()
             
             if existing_assoc:
-                # Update existing association
-                existing_assoc.template_id = template_id
-                existing_assoc.is_active = True
-            else:
-                # Create new association
-                new_assoc = GroupTemplate(
-                    group_id=group_id,
-                    template_id=template_id,
-                    is_active=True
-                )
-                db.session.add(new_assoc)
+                return jsonify({
+                    'error': 'This group already has an active template assigned. Please unassign the current template first.'
+                }), 400
             
+            # Create new association
+            new_assoc = GroupTemplate(
+                group_id=group_id,
+                template_id=template_id,
+                is_active=True
+            )
+            db.session.add(new_assoc)
             db.session.commit()
             
             # Return updated assignments
@@ -1578,6 +1715,41 @@ def manage_group_templates():
             print(f"Error assigning template to group: {str(e)}")
             print(traceback.format_exc())
             return jsonify({'error': str(e)}), 500
+            
+    elif request.method == 'DELETE':
+        try:
+            group_id = request.args.get('group_id')
+            if not group_id:
+                return jsonify({'error': 'Group ID is required'}), 400
+            
+            # Verify group belongs to user's tennis club
+            group = TennisGroup.query.filter_by(
+                id=group_id, 
+                tennis_club_id=current_user.tennis_club_id
+            ).first_or_404()
+            
+            # Find and deactivate the assignment
+            assignment = GroupTemplate.query.filter_by(
+                group_id=group_id,
+                is_active=True
+            ).first()
+            
+            if not assignment:
+                return jsonify({'error': 'No active template assignment found for this group'}), 404
+            
+            assignment.is_active = False
+            db.session.commit()
+            
+            return jsonify({
+                'message': 'Template unassigned successfully',
+                'group_id': group_id
+            })
+            
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error unassigning template: {str(e)}")
+            print(traceback.format_exc())
+            return jsonify({'error': str(e)}), 500
     
     # GET - Return all group-template assignments
     try:
@@ -1587,8 +1759,8 @@ def manage_group_templates():
         ).all()
         
         return jsonify([{
-            'group_id': a.group_id,
-            'template_id': a.template_id,
+            'groupId': a.group_id,
+            'templateId': a.template_id,
             'group_name': a.group.name,
             'template_name': a.template.name
         } for a in assignments])
@@ -1751,3 +1923,78 @@ def get_report_template(player_id):
             'groupName': player.tennis_group.name
         }
     })
+
+@main.route('/api/reports/print-all/<int:period_id>', methods=['GET'])
+@login_required
+@admin_required
+def print_all_reports(period_id):
+    """Generate a single PDF containing all reports for a teaching period"""
+    try:
+        # Verify period belongs to user's tennis club
+        period = TeachingPeriod.query.filter_by(
+            id=period_id,
+            tennis_club_id=current_user.tennis_club_id
+        ).first_or_404()
+        
+        # Use the appropriate generator based on club name
+        if 'wilton' in current_user.tennis_club.name.lower():
+            from app.utils.wilton_report_generator import EnhancedWiltonReportGenerator
+            
+            # Generate all reports first
+            config_path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
+                'app', 'utils', 'wilton_group_config.json'
+            )
+            generator = EnhancedWiltonReportGenerator(config_path)
+            result = generator.batch_generate_reports(period_id)
+            
+            if result.get('success', 0) == 0:
+                return jsonify({
+                    'error': 'No reports were generated',
+                    'details': result.get('error_details', [])
+                }), 400
+
+            # Get all generated PDFs and merge them
+            from PyPDF2 import PdfMerger
+            merger = PdfMerger()
+            
+            reports_dir = result['output_directory']
+            pdf_count = 0
+            
+            # Walk through all PDFs in the directory and its subdirectories
+            for root, _, files in os.walk(reports_dir):
+                for file in sorted(files):  # Sort files for consistent ordering
+                    if file.endswith('.pdf'):
+                        file_path = os.path.join(root, file)
+                        merger.append(file_path)
+                        pdf_count += 1
+
+            if pdf_count == 0:
+                return jsonify({'error': 'No PDF reports found'}), 404
+
+            # Create the combined PDF in memory
+            output = BytesIO()
+            merger.write(output)
+            output.seek(0)
+            
+            # Format filename
+            formatted_club = current_user.tennis_club.name.lower().replace(' ', '_')
+            formatted_term = period.name.lower().replace(' ', '_')
+            filename = f"combined_reports_{formatted_club}_{formatted_term}.pdf"
+            
+            return send_file(
+                output,
+                mimetype='application/pdf',
+                as_attachment=True,
+                download_name=filename
+            )
+            
+        else:
+            # Handle non-Wilton clubs here if needed
+            from app.utils.report_generator import batch_generate_reports
+            # Similar logic as above but using the standard generator
+            
+    except Exception as e:
+        current_app.logger.error(f"Error generating combined PDF: {str(e)}")
+        current_app.logger.error(traceback.format_exc())
+        return jsonify({'error': str(e)}), 500
