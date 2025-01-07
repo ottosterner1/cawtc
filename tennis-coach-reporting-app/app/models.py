@@ -81,6 +81,7 @@ class TennisGroupTimes(db.Model):
     day_of_week = db.Column(db.Enum(DayOfWeek), nullable=False)
     start_time = db.Column(db.Time, nullable=False)
     end_time = db.Column(db.Time, nullable=False)
+    capacity = db.Column(db.Integer, nullable=True)
     tennis_club_id = db.Column(db.Integer, db.ForeignKey('tennis_club.id'), nullable=False)
     created_at = db.Column(db.DateTime(timezone=True), server_default=text('CURRENT_TIMESTAMP'))
 
@@ -273,10 +274,13 @@ class Report(db.Model):
     date = db.Column(db.DateTime(timezone=True), server_default=text('CURRENT_TIMESTAMP'))
     created_at = db.Column(db.DateTime(timezone=True), server_default=text('CURRENT_TIMESTAMP'))
 
-    # Email tracking fields
+    # Enhanced email tracking fields
     email_sent = db.Column(db.Boolean, default=False)
     email_sent_at = db.Column(db.DateTime(timezone=True))
+    email_recipients = db.Column(JSONB)
+    email_history = db.Column(JSONB, default=[])
     last_email_status = db.Column(db.String(50))
+    email_message_id = db.Column(db.String(100)) 
     email_attempts = db.Column(db.Integer, default=0)
 
     # Relationships
@@ -289,11 +293,42 @@ class Report(db.Model):
     programme_player = db.relationship('ProgrammePlayers', back_populates='reports')
     template = db.relationship('ReportTemplate', back_populates='reports')
 
-    def mark_as_sent(self, status='Success'):
-        self.email_sent = True
-        self.email_sent_at = datetime.now(timezone.utc)
-        self.last_email_status = status
+    def record_email_attempt(self, status: str, recipients: list, subject: str, 
+                           message_id: str = None, error: str = None):
+        """Record a detailed email attempt"""
+        if self.email_history is None:
+            self.email_history = []
+            
+        attempt = {
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'status': status,
+            'recipients': recipients,
+            'subject': subject,
+            'message_id': message_id,
+            'error': error
+        }
+        
+        self.email_history.append(attempt)
         self.email_attempts += 1
+        
+        if status == 'success':
+            self.email_sent = True
+            self.email_sent_at = datetime.now(timezone.utc)
+            self.last_email_status = 'Success'
+            self.email_recipients = recipients
+            self.email_message_id = message_id
+        else:
+            self.last_email_status = f'Failed: {error}'
+
+    def can_send_email(self) -> tuple[bool, str]:
+        """Check if email can be sent and return (bool, reason)"""
+        if self.email_sent:
+            return False, "Report has already been sent"
+            
+        if not self.student.contact_email:
+            return False, "No contact email available for this student"
+            
+        return True, "OK"
 
     def is_student_under_18(self):
         """Check if the student is under 18"""

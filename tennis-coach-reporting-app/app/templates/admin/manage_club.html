@@ -26,14 +26,14 @@
                 {% endif %}
                 
                 <form action="{{ url_for('club_management.upload_logo', club_id=club.id) }}" 
-                      method="POST" 
-                      enctype="multipart/form-data"
-                      class="flex-1">
+                    method="POST" 
+                    enctype="multipart/form-data"
+                    class="flex-1">
                     <div class="flex items-center space-x-2">
                         <input type="file" 
-                               name="logo" 
-                               accept="image/png,image/jpeg,image/gif"
-                               class="flex-1">
+                                name="logo" 
+                                accept="image/png,image/jpeg,image/gif"
+                                class="flex-1">
                         <button type="submit" 
                                 class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
                             Upload Logo
@@ -77,12 +77,20 @@
 <script>
     async function handleImageError(img) {
         try {
-            const response = await fetch(`/api/clubs/{{ club.id }}/logo-url`);
+            // Add leading slash to URL
+            const response = await fetch(`/api/clubs/${img.dataset.clubId}/logo-url`);
             if (response.ok) {
                 const data = await response.json();
                 if (data.url) {
                     img.src = data.url;
+                    img.style.display = 'block';
+                } else {
+                    console.error('No URL in response');
+                    img.style.display = 'none';
                 }
+            } else {
+                console.error('Error response:', response.status);
+                img.style.display = 'none';
             }
         } catch (error) {
             console.error('Error refreshing logo URL:', error);
@@ -92,10 +100,10 @@
 
     // Refresh URL periodically before it expires
     setInterval(async () => {
-        const img = document.querySelector('img[alt="{{ club.name }} logo"]');
+        const img = document.querySelector(`img[alt="{{ club.name }} logo"]`);
         if (img) {
             await handleImageError(img);
         }
-    }, 3000000); // Refresh every 50 minutes
+    }, 40 * 60 * 1000); // Refresh every 40 minutes
 </script>
 {% endblock %}

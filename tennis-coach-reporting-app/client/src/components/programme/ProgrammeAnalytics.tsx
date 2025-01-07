@@ -2,16 +2,19 @@ import React from 'react';
 import { Card } from '../../components/ui/card';
 import { Users, Calendar, PieChart } from 'lucide-react';
 
+interface TimeSlot {
+  day_of_week: string;
+  start_time: string;
+  end_time: string;
+  capacity?: number;
+}
+
 interface Player {
   id: number;
   student_name: string;
   group_name: string;
   group_id: number;
-  time_slot?: {
-    day_of_week: string;
-    start_time: string;
-    end_time: string;
-  };
+  time_slot?: TimeSlot;
 }
 
 interface ProgrammeAnalyticsProps {
@@ -23,6 +26,7 @@ interface SessionInfo {
   group: string;
   dayOfWeek: string;
   timeSlot: string;
+  capacity?: number;
 }
 
 const ProgrammeAnalytics: React.FC<ProgrammeAnalyticsProps> = ({ players }) => {
@@ -46,7 +50,8 @@ const ProgrammeAnalytics: React.FC<ProgrammeAnalyticsProps> = ({ players }) => {
             count: 0,
             group: player.group_name,
             dayOfWeek: player.time_slot.day_of_week,
-            timeSlot: `${player.time_slot.start_time}-${player.time_slot.end_time}`
+            timeSlot: `${player.time_slot.start_time}-${player.time_slot.end_time}`,
+            capacity: player.time_slot.capacity
           };
         }
         summary.sessionBreakdown[sessionKey].count += 1;
@@ -56,9 +61,29 @@ const ProgrammeAnalytics: React.FC<ProgrammeAnalyticsProps> = ({ players }) => {
     return summary;
   }, [players]);
 
-  const formatTime = (timeString: string) => {
-    const [hours, minutes] = timeString.split(':');
-    return `${hours}:${minutes}`;
+  const getCapacityDisplay = (session: SessionInfo) => {
+    if (!session.capacity) {
+      return `${session.count}`;
+    }
+    
+    const isFull = session.count >= session.capacity;
+    const capacityText = `${session.count}/${session.capacity}`;
+    
+    return (
+      <span className={`${isFull ? 'text-green-600' : 'text-gray-900'}`}>
+        {capacityText}
+        {isFull && ' (Full)'}
+      </span>
+    );
+  };
+
+  const getCapacityColor = (session: SessionInfo) => {
+    if (!session.capacity) return 'bg-gray-50';
+    
+    const ratio = session.count / session.capacity;
+    if (ratio >= 1) return 'bg-green-50';
+    if (ratio >= 0.8) return 'bg-yellow-50';
+    return 'bg-gray-50';
   };
 
   return (
@@ -129,7 +154,10 @@ const ProgrammeAnalytics: React.FC<ProgrammeAnalyticsProps> = ({ players }) => {
               return sessionA.timeSlot.localeCompare(sessionB.timeSlot);
             })
             .map(([sessionKey, session]) => (
-              <div key={sessionKey} className="p-3 bg-gray-50 rounded-lg">
+              <div 
+                key={sessionKey} 
+                className={`p-3 rounded-lg ${getCapacityColor(session)}`}
+              >
                 <div className="flex justify-between items-center">
                   <div className="flex flex-col">
                     <span className="font-medium text-gray-900">{session.group}</span>
@@ -137,8 +165,8 @@ const ProgrammeAnalytics: React.FC<ProgrammeAnalyticsProps> = ({ players }) => {
                       {session.dayOfWeek} {session.timeSlot}
                     </span>
                   </div>
-                  <span className="text-lg font-semibold text-gray-900">
-                    {session.count}
+                  <span className="text-lg font-semibold">
+                    {getCapacityDisplay(session)}
                   </span>
                 </div>
               </div>

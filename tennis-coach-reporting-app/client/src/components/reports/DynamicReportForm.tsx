@@ -330,7 +330,7 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
 
   return (
     <Card>
-      <CardHeader className="text-center border-b pb-6">
+    <CardHeader className="text-center border-b pb-6">
         <CardTitle className="text-2xl font-bold">
           {initialData ? 'Edit Report' : 'Create Report'}
         </CardTitle>
@@ -357,24 +357,29 @@ const DynamicReportForm: React.FC<DynamicReportFormProps> = ({
           </div>
         </div>
         
-        <div className="mt-3 p-2 rounded-lg"> 
-          <div className="w-full mx-auto flex justify-end">
-            <div className="grid grid-cols-3 text-center gap-4">
-              <div className="flex flex-col items-center space-y-2">
-                <div className="h-4"></div>
-                <div>Yes</div>
-              </div>
-              <div className="flex flex-col items-center space-y-2">
-                <div className="h-4"></div>
-                <div>Nearly</div>
-              </div>
-              <div className="flex flex-col items-center space-y-2">
-                <div className="h-4"></div>
-                <div>Not Yet</div>
+        {/* Only show progress options if there are progress fields */}
+        {template.sections.some(section => 
+          section.fields.some(field => field.fieldType === 'progress')
+        ) && (
+          <div className="mt-3 p-2 rounded-lg"> 
+            <div className="w-full mx-auto flex justify-end">
+              <div className="grid grid-cols-3 text-center gap-4">
+                <div className="flex flex-col items-center space-y-2">
+                  <div className="h-4"></div>
+                  <div>Yes</div>
+                </div>
+                <div className="flex flex-col items-center space-y-2">
+                  <div className="h-4"></div>
+                  <div>Nearly</div>
+                </div>
+                <div className="flex flex-col items-center space-y-2">
+                  <div className="h-4"></div>
+                  <div>Not Yet</div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
       </CardHeader>
 
       <CardContent>

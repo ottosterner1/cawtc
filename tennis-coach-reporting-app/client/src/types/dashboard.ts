@@ -48,6 +48,10 @@ export interface User {
   name: string;
   is_admin: boolean;
   is_super_admin: boolean;
+  tennis_club: {
+    id: number;
+    name: string;
+  };
 }
 
 export interface TeachingPeriod {
