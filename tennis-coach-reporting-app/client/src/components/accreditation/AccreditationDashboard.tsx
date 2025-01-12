@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
 import { Alert, AlertDescription } from '../../components/ui/alert';
-import { Bell } from 'lucide-react';
 
 type AccreditationType = 'dbs' | 'first_aid' | 'safeguarding' | 'pediatric_first_aid' | 'accreditation';
 

@@ -39,6 +39,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onSave, onCan
   );
   const [availableGroups, setAvailableGroups] = useState<Array<{ id: number, name: string }>>([]);
   const [expandedSections, setExpandedSections] = useState<Set<number>>(new Set());
+  const [loadingGroups, setLoadingGroups] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     const fetchGroups = async () => {
@@ -53,6 +54,41 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onSave, onCan
     };
     fetchGroups();
   }, []);
+
+  const handleGroupToggle = async (groupId: number, checked: boolean) => {
+    try {
+      setLoadingGroups(prev => new Set([...prev, groupId]));
+  
+      if (template?.id) { // Only make API calls if we're editing an existing template
+        if (!checked) {
+          // Unassign template from group
+          const response = await fetch(`/api/templates/group-assignments?group_id=${groupId}`, {
+            method: 'DELETE'
+          });
+  
+          if (!response.ok) {
+            throw new Error('Failed to unassign template from group');
+          }
+        }
+      }
+  
+      // Update local state after successful API call
+      setSelectedGroups(prev => 
+        checked 
+          ? [...prev, groupId]
+          : prev.filter(id => id !== groupId)
+      );
+    } catch (error) {
+      console.error('Error toggling group assignment:', error);
+      setErrors(prev => [...prev, 'Failed to update group assignment']);
+    } finally {
+      setLoadingGroups(prev => {
+        const next = new Set(prev);
+        next.delete(groupId);
+        return next;
+      });
+    }
+  };
 
   const toggleSection = (index: number) => {
     setExpandedSections(prev => {
@@ -125,7 +161,6 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onSave, onCan
     const newErrors: string[] = [];
     if (!name.trim()) newErrors.push('Please provide a template name');
     if (sections.length === 0) newErrors.push('Add at least one section');
-    if (selectedGroups.length === 0) newErrors.push('Please assign at least one group');
     
     sections.forEach((section, sIndex) => {
       if (!section.name.trim()) {
@@ -216,20 +251,21 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onSave, onCan
             {availableGroups.map(group => (
               <label
                 key={group.id}
-                className="flex items-center p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer"
+                className={`flex items-center p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer ${
+                  loadingGroups.has(group.id) ? 'opacity-50' : ''
+                }`}
               >
                 <input
                   type="checkbox"
                   checked={selectedGroups.includes(group.id)}
-                  onChange={(e) => {
-                    setSelectedGroups(e.target.checked
-                      ? [...selectedGroups, group.id]
-                      : selectedGroups.filter(id => id !== group.id)
-                    );
-                  }}
+                  onChange={(e) => handleGroupToggle(group.id, e.target.checked)}
+                  disabled={loadingGroups.has(group.id)}
                   className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="ml-3 text-sm">{group.name}</span>
+                {loadingGroups.has(group.id) && (
+                  <span className="ml-2 text-sm text-gray-500">Updating...</span>
+                )}
               </label>
             ))}
           </div>

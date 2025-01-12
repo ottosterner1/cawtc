@@ -159,7 +159,7 @@ const AddProgrammePlayer: React.FC = () => {
   return (
     <Card>
       <CardContent>
-        <h1 className="text-2xl font-bold mb-6">Add New Programme Player</h1>
+        <h1 className="text-2xl font-bold mb-10">Add New Programme Player</h1>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">

@@ -334,7 +334,34 @@ def dashboard_stats():
         tennis_club_id = current_user.tennis_club_id
         selected_period_id = request.args.get('period', type=int)
         
-        # Base query - include both template active checks
+        # Get all teaching periods ordered by start date (newest first)
+        all_periods = TeachingPeriod.query.filter_by(
+            tennis_club_id=tennis_club_id
+        ).order_by(TeachingPeriod.start_date.desc()).all()
+        
+        # Get period IDs that have players
+        period_ids_with_players = (db.session.query(ProgrammePlayers.teaching_period_id)
+            .filter(ProgrammePlayers.tennis_club_id == tennis_club_id)
+            .distinct()
+            .all())
+        period_ids = [p[0] for p in period_ids_with_players]
+        
+        # Find the default period (latest with players)
+        default_period_id = None
+        if period_ids:
+            default_period = TeachingPeriod.query.filter(
+                TeachingPeriod.id.in_(period_ids),
+                TeachingPeriod.tennis_club_id == tennis_club_id
+            ).order_by(TeachingPeriod.start_date.desc()).first()
+            
+            if default_period:
+                default_period_id = default_period.id
+        
+        # If no period is selected, use the default
+        if not selected_period_id and default_period_id:
+            selected_period_id = default_period_id
+
+        # Rest of your existing query logic...
         base_query = (ProgrammePlayers.query
             .select_from(ProgrammePlayers)
             .join(TennisGroup, ProgrammePlayers.group_id == TennisGroup.id)
@@ -483,8 +510,10 @@ def dashboard_stats():
         response_data = {
             'periods': [{
                 'id': p.id,
-                'name': p.name
-            } for p in TeachingPeriod.query.filter_by(tennis_club_id=tennis_club_id).order_by(TeachingPeriod.start_date.desc()).all()],
+                'name': p.name,
+                'hasPlayers': p.id in period_ids
+            } for p in all_periods],
+            'defaultPeriodId': default_period_id,
             'stats': {
                 'totalStudents': total_students,
                 'totalReports': total_reports,
