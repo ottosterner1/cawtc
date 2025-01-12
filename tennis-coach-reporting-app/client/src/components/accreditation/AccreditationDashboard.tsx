@@ -21,7 +21,6 @@ const AccreditationDashboard = () => {
   const [coaches, setCoaches] = useState<Coach[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [sendingReminders, setSendingReminders] = useState(false);
 
   useEffect(() => {
     fetchCoachesData();
@@ -61,24 +60,6 @@ const AccreditationDashboard = () => {
     if (days === null) return 'Not Set';
     if (status === 'expired') return `Expired ${Math.abs(days)} days ago`;
     return `${days} days remaining`;
-  };
-
-  const sendReminders = async () => {
-    setSendingReminders(true);
-    try {
-      const response = await fetch('/api/coaches/send-reminders', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      if (!response.ok) throw new Error('Failed to send reminders');
-      setError('Reminders sent successfully');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send reminders');
-    } finally {
-      setSendingReminders(false);
-    }
   };
 
   if (loading) {
