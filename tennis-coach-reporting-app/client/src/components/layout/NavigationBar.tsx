@@ -53,7 +53,7 @@ const NavigationBar: React.FC<NavigationBarProps> = ({ currentUser }) => {
             <div className="hidden md:flex md:items-center md:ml-6">
               <div className="px-3 py-1 bg-gray-100 rounded-full flex items-center">
                 <span className="text-sm text-gray-600">
-                  Online Reporting
+                  Coach Portal
                 </span>
               </div>
             </div>

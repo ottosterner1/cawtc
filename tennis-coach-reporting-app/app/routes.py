@@ -334,7 +334,34 @@ def dashboard_stats():
         tennis_club_id = current_user.tennis_club_id
         selected_period_id = request.args.get('period', type=int)
         
-        # Base query - include both template active checks
+        # Get all teaching periods ordered by start date (newest first)
+        all_periods = TeachingPeriod.query.filter_by(
+            tennis_club_id=tennis_club_id
+        ).order_by(TeachingPeriod.start_date.desc()).all()
+        
+        # Get period IDs that have players
+        period_ids_with_players = (db.session.query(ProgrammePlayers.teaching_period_id)
+            .filter(ProgrammePlayers.tennis_club_id == tennis_club_id)
+            .distinct()
+            .all())
+        period_ids = [p[0] for p in period_ids_with_players]
+        
+        # Find the default period (latest with players)
+        default_period_id = None
+        if period_ids:
+            default_period = TeachingPeriod.query.filter(
+                TeachingPeriod.id.in_(period_ids),
+                TeachingPeriod.tennis_club_id == tennis_club_id
+            ).order_by(TeachingPeriod.start_date.desc()).first()
+            
+            if default_period:
+                default_period_id = default_period.id
+        
+        # If no period is selected, use the default
+        if not selected_period_id and default_period_id:
+            selected_period_id = default_period_id
+
+        # Rest of your existing query logic...
         base_query = (ProgrammePlayers.query
             .select_from(ProgrammePlayers)
             .join(TennisGroup, ProgrammePlayers.group_id == TennisGroup.id)
@@ -483,8 +510,10 @@ def dashboard_stats():
         response_data = {
             'periods': [{
                 'id': p.id,
-                'name': p.name
-            } for p in TeachingPeriod.query.filter_by(tennis_club_id=tennis_club_id).order_by(TeachingPeriod.start_date.desc()).all()],
+                'name': p.name,
+                'hasPlayers': p.id in period_ids
+            } for p in all_periods],
+            'defaultPeriodId': default_period_id,
             'stats': {
                 'totalStudents': total_students,
                 'totalReports': total_reports,
@@ -599,7 +628,6 @@ def programme_players():
         
         # If no period selected, find the latest period that has players
         if not selected_period_id:
-            # First get all period IDs that have players
             period_ids_with_players = (db.session.query(ProgrammePlayers.teaching_period_id)
                 .filter(ProgrammePlayers.tennis_club_id == tennis_club_id)
                 .distinct()
@@ -609,7 +637,6 @@ def programme_players():
             current_app.logger.info(f"Period IDs with players: {period_ids}")
             
             if period_ids:
-                # Then get the latest of these periods
                 latest_period = (TeachingPeriod.query
                     .filter(TeachingPeriod.id.in_(period_ids))
                     .order_by(TeachingPeriod.start_date.desc())
@@ -658,6 +685,7 @@ def programme_players():
             TennisGroupTimes.day_of_week,
             TennisGroupTimes.start_time,
             TennisGroupTimes.end_time,
+            TennisGroupTimes.capacity,  # Added capacity
             Report.id.label('report_id'),
             Report.coach_id,
             ProgrammePlayers.coach_id.label('assigned_coach_id'),
@@ -672,6 +700,7 @@ def programme_players():
             TennisGroupTimes.day_of_week,
             TennisGroupTimes.start_time,
             TennisGroupTimes.end_time,
+            TennisGroupTimes.capacity,  # Added capacity to group by
             Report.id,
             Report.coach_id,
             ProgrammePlayers.coach_id
@@ -692,7 +721,8 @@ def programme_players():
             'time_slot': {
                 'day_of_week': player.day_of_week.value if player.day_of_week else None,
                 'start_time': player.start_time.strftime('%H:%M') if player.start_time else None,
-                'end_time': player.end_time.strftime('%H:%M') if player.end_time else None
+                'end_time': player.end_time.strftime('%H:%M') if player.end_time else None,
+                'capacity': player.capacity  # Added capacity to time_slot object
             } if player.day_of_week else None,
             'report_submitted': player.report_id is not None,
             'report_id': player.report_id,
@@ -1153,104 +1183,7 @@ def delete_report(report_id):
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
-@main.route('/api/reports/send/<int:period_id>', methods=['GET', 'POST'])
-@login_required
-@admin_required
-def send_reports(period_id):
-    print(f"=== send_reports endpoint called with period_id: {period_id} ===")
-    print(f"Request method: {request.method}")
-    
-    try:
-        # Verify the period exists and belongs to user's tennis club
-        period = TeachingPeriod.query.filter_by(
-            id=period_id,
-            tennis_club_id=current_user.tennis_club_id
-        ).first_or_404()
-        
-        if request.method == 'POST':
-            print("Processing POST request")
-            try:
-                data = request.get_json()
-                print("Received data:", data)
-                
-                if not data:
-                    return jsonify({'error': 'No data received'}), 400
 
-                email_subject = data.get('email_subject')
-                email_message = data.get('email_message')
-                
-                if not email_subject or not email_message:
-                    return jsonify({
-                        'error': 'Email subject and message are required'
-                    }), 400
-
-                # Get reports for this period using proper joins
-                reports = (Report.query
-                    .join(Student)
-                    .join(ProgrammePlayers)
-                    .filter(
-                        Report.teaching_period_id == period_id,
-                        ProgrammePlayers.tennis_club_id == current_user.tennis_club_id,
-                        Student.contact_email.isnot(None)  # Only get reports where student has email
-                    ).all())
-                
-                print(f"Found {len(reports)} reports to process")
-                
-                if not reports:
-                    return jsonify({
-                        'error': 'No reports found with valid email addresses'
-                    }), 404
-                
-                # Use the EmailService with proper error handling
-                try:
-                    email_service = EmailService()
-                    success_count, error_count, errors = email_service.send_reports_batch(
-                        reports=reports,
-                        subject=email_subject,
-                        message=email_message
-                    )
-                    
-                    return jsonify({
-                        'success_count': success_count,
-                        'error_count': error_count,
-                        'errors': errors if errors else None
-                    })
-                    
-                except Exception as email_error:
-                    print(f"Email service error: {str(email_error)}")
-                    return jsonify({
-                        'error': f'Error sending emails: {str(email_error)}'
-                    }), 500
-                    
-            except Exception as e:
-                print(f"Error processing POST request: {str(e)}")
-                print(traceback.format_exc())
-                return jsonify({
-                    'error': f'Server error while sending reports: {str(e)}'
-                }), 500
-        
-        # GET request handling
-        reports = (Report.query
-            .join(Student)
-            .join(ProgrammePlayers)
-            .filter(
-                Report.teaching_period_id == period_id,
-                ProgrammePlayers.tennis_club_id == current_user.tennis_club_id
-            ).all())
-        
-        return jsonify({
-            'total_reports': len(reports),
-            'reports_with_email': len([r for r in reports if r.student.contact_email])
-        })
-        
-    except Exception as e:
-        print(f"Error in send_reports: {str(e)}")
-        print(traceback.format_exc())
-        return jsonify({
-            'error': f'Server error: {str(e)}'
-        }), 500
-    
-# Path: app/routes.py (Add these routes to your existing routes.py)
 
 @main.route('/profile')
 @login_required
@@ -1998,3 +1931,187 @@ def print_all_reports(period_id):
         current_app.logger.error(f"Error generating combined PDF: {str(e)}")
         current_app.logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
+    
+
+##########################
+## Emailing
+##########################
+
+@main.route('/api/reports/email-status/<int:period_id>')
+@login_required
+@admin_required
+def get_email_status(period_id):
+    """Get email status for all reports in a teaching period"""
+    try:
+        # Verify period belongs to user's club
+        period = TeachingPeriod.query.filter_by(
+            id=period_id,
+            tennis_club_id=current_user.tennis_club_id
+        ).first_or_404()
+
+        # Get reports with student information
+        reports = (Report.query
+            .join(Student)
+            .join(ProgrammePlayers)
+            .filter(
+                Report.teaching_period_id == period_id,
+                ProgrammePlayers.tennis_club_id == current_user.tennis_club_id
+            )
+            .all())
+
+        report_data = [{
+            'student_name': report.student.name,
+            'contact_email': report.student.contact_email,
+            'report_id': report.id,
+            'email_sent': report.email_sent,
+            'email_sent_at': report.email_sent_at.isoformat() if report.email_sent_at else None,
+            'last_email_status': report.last_email_status,
+            'email_attempts': report.email_attempts
+        } for report in reports]
+
+        return jsonify({
+            'reports': report_data,
+            'total_reports': len(reports)
+        })
+
+    except Exception as e:
+        current_app.logger.error(f"Error getting email status: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+    
+@main.route('/api/reports/send-email/<int:report_id>', methods=['POST'])
+@login_required
+@admin_required
+def send_report_email(report_id):
+    """Send a single report email"""
+    try:
+        data = request.get_json()
+        if not data or 'subject' not in data or 'message' not in data:
+            return jsonify({'error': 'Subject and message are required'}), 400
+
+        report = Report.query.get_or_404(report_id)
+        
+        # Check permissions
+        if report.tennis_club_id != current_user.tennis_club_id:
+            return jsonify({'error': 'Unauthorized'}), 403
+
+        # Check if can send email
+        can_send, reason = report.can_send_email()
+        if not can_send:
+            return jsonify({'error': reason}), 400
+
+        # Send email
+        email_service = EmailService()
+        success, message, message_id = email_service.send_report(
+            report=report,
+            subject=data['subject'],
+            message=data['message']
+        )
+
+        if success:
+            return jsonify({
+                'message': 'Email sent successfully',
+                'message_id': message_id
+            })
+        else:
+            return jsonify({'error': message}), 500
+
+    except Exception as e:
+        current_app.logger.error(f"Error sending email: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+    
+@main.route('/api/reports/send/<int:period_id>', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def send_reports(period_id):
+    print(f"=== send_reports endpoint called with period_id: {period_id} ===")
+    print(f"Request method: {request.method}")
+    
+    try:
+        # Verify the period exists and belongs to user's tennis club
+        period = TeachingPeriod.query.filter_by(
+            id=period_id,
+            tennis_club_id=current_user.tennis_club_id
+        ).first_or_404()
+        
+        if request.method == 'POST':
+            print("Processing POST request")
+            try:
+                data = request.get_json()
+                print("Received data:", data)
+                
+                if not data:
+                    return jsonify({'error': 'No data received'}), 400
+
+                email_subject = data.get('email_subject')
+                email_message = data.get('email_message')
+                
+                if not email_subject or not email_message:
+                    return jsonify({
+                        'error': 'Email subject and message are required'
+                    }), 400
+
+                # Get reports for this period using proper joins
+                reports = (Report.query
+                    .join(Student)
+                    .join(ProgrammePlayers)
+                    .filter(
+                        Report.teaching_period_id == period_id,
+                        ProgrammePlayers.tennis_club_id == current_user.tennis_club_id,
+                        Student.contact_email.isnot(None)  # Only get reports where student has email
+                    ).all())
+                
+                print(f"Found {len(reports)} reports to process")
+                
+                if not reports:
+                    return jsonify({
+                        'error': 'No reports found with valid email addresses'
+                    }), 404
+                
+                # Use the EmailService with proper error handling
+                try:
+                    email_service = EmailService()
+                    success_count, error_count, errors = email_service.send_reports_batch(
+                        reports=reports,
+                        subject=email_subject,
+                        message=email_message
+                    )
+                    
+                    return jsonify({
+                        'success_count': success_count,
+                        'error_count': error_count,
+                        'errors': errors if errors else None
+                    })
+                    
+                except Exception as email_error:
+                    print(f"Email service error: {str(email_error)}")
+                    return jsonify({
+                        'error': f'Error sending emails: {str(email_error)}'
+                    }), 500
+                    
+            except Exception as e:
+                print(f"Error processing POST request: {str(e)}")
+                print(traceback.format_exc())
+                return jsonify({
+                    'error': f'Server error while sending reports: {str(e)}'
+                }), 500
+        
+        # GET request handling
+        reports = (Report.query
+            .join(Student)
+            .join(ProgrammePlayers)
+            .filter(
+                Report.teaching_period_id == period_id,
+                ProgrammePlayers.tennis_club_id == current_user.tennis_club_id
+            ).all())
+        
+        return jsonify({
+            'total_reports': len(reports),
+            'reports_with_email': len([r for r in reports if r.student.contact_email])
+        })
+        
+    except Exception as e:
+        print(f"Error in send_reports: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({
+            'error': f'Server error: {str(e)}'
+        }), 500

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Download, Send, Menu } from 'lucide-react';
 import { DashboardStats } from './DashboardStats';
-import { BulkEmailSender } from '../email/BulkEmailSender';
+import BulkEmailSender from '../email/BulkEmailSender';
 import { 
   TeachingPeriod, 
   DashboardMetrics, 
@@ -303,6 +303,7 @@ const Dashboard = () => {
       {showBulkEmail && selectedPeriod && (
         <BulkEmailSender
           periodId={selectedPeriod}
+          clubName={currentUser.tennis_club.name}
           onClose={() => setShowBulkEmail(false)}
         />
       )}

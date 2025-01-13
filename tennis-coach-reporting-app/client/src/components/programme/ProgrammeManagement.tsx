@@ -245,6 +245,11 @@ const ProgrammeManagement = () => {
   const [error, setError] = useState<string | null>(null);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
 
+  // Separate useEffect for tracking showBulkUpload changes
+  useEffect(() => {
+  }, [showBulkUpload]);
+
+  // Fetch user data
   useEffect(() => {
     const fetchUserData = async () => {
       try {
@@ -285,7 +290,11 @@ const ProgrammeManagement = () => {
         if (!response.ok) throw new Error('Failed to fetch periods');
         const data = await response.json();
         setPeriods(data.periods);
-        if (data.periods.length > 0) {
+        
+        // Use the defaultPeriodId if available
+        if (data.defaultPeriodId) {
+          setSelectedPeriod(data.defaultPeriodId);
+        } else if (data.periods.length > 0) {
           setSelectedPeriod(data.periods[0].id);
         }
       } catch (err) {
@@ -300,6 +309,12 @@ const ProgrammeManagement = () => {
   useEffect(() => {
     fetchPlayers();
   }, [fetchPlayers]);
+
+  const toggleBulkUpload = () => {
+    setShowBulkUpload(prev => {
+      return !prev;
+    });
+  };
 
   const handleBulkUploadSuccess = () => {
     fetchPlayers();
@@ -354,10 +369,10 @@ const ProgrammeManagement = () => {
                 Add New Player
               </button>
               <button
-                onClick={() => setShowBulkUpload(!showBulkUpload)}
+                onClick={toggleBulkUpload}
                 className="inline-flex items-center justify-center px-4 py-2 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 transition-colors"
               >
-                Bulk Upload
+                {showBulkUpload ? 'Hide Bulk Upload' : 'Show Bulk Upload'}
               </button>
               <button
                 onClick={handleDownloadTemplate}
@@ -369,19 +384,27 @@ const ProgrammeManagement = () => {
             </div>
           </div>
 
+
+
+          {/* Bulk Upload Section with debug wrapper */}
+          {showBulkUpload && (
+            <div className="mb-6">
+              <BulkUploadSection
+                periodId={selectedPeriod}
+                onSuccess={() => {
+                  console.log('BulkUploadSection onSuccess called');
+                  handleBulkUploadSuccess();
+                }}
+                onCancel={() => {
+                  console.log('BulkUploadSection onCancel called');
+                  setShowBulkUpload(false);
+                }}
+              />
+            </div>
+          )}
+          
           {/* Analytics Section */}
           <ProgrammeAnalytics players={players} />
-
-
-
-          {/* Bulk Upload Section */}
-          {showBulkUpload && (
-            <BulkUploadSection
-              periodId={selectedPeriod}
-              onSuccess={handleBulkUploadSuccess}
-              onCancel={() => setShowBulkUpload(false)}
-            />
-          )}
 
           {/* Players List */}
           <PlayersList

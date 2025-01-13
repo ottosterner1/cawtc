@@ -42,16 +42,19 @@ class EnhancedWiltonReportGenerator:
             
     def get_template_path(self, group_name):
         """Get the correct template path based on group name."""
-        # Convert group name to lowercase and remove spaces for filename
         template_name = f"wilton_{group_name.lower().replace(' ', '_')}_report.pdf"
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        return os.path.join(base_dir, 'app', 'static', 'pdf_templates', template_name)
+        template_path = os.path.join(base_dir, 'app', 'static', 'pdf_templates', template_name)
         
+        # Return None if template doesn't exist instead of raising error
+        if not os.path.exists(template_path):
+            return None
+        return template_path
+
     def get_group_config(self, group_name):
         """Get the configuration for a specific group."""
-        if group_name not in self.config:
-            raise ValueError(f"No configuration found for group: {group_name}")
-        return self.config[group_name]
+        # Return None if no config found instead of raising error
+        return self.config.get(group_name)
         
     def draw_diagonal_text(self, c, text, x, y, angle=23):
         """Draw text at a specified angle with handwriting style."""
@@ -290,9 +293,16 @@ class EnhancedWiltonReportGenerator:
             .join(Report.teaching_period)\
             .options(
                 db.joinedload(Report.recommended_group),
-                db.joinedload(Report.teaching_period)  # Eager load teaching period
+                db.joinedload(Report.teaching_period)
             )\
             .all()
+        
+        ## Print the report data for debugging
+        print(f"301: Generating reports for period: {reports[0].teaching_period.name}")
+        for report in reports:
+            print(f"302: Generating report for {report.student.name}")
+
+
         
         if not reports:
             return {
@@ -315,15 +325,16 @@ class EnhancedWiltonReportGenerator:
         
         for report in reports:
             try:
+                print(f"330: Generating report for {report.student.name}")
                 # Get template path for this group
                 template_path = generator.get_template_path(report.tennis_group.name)
-                
-                if not os.path.exists(template_path):
-                    errors.append(f"Template not found for group: {report.tennis_group.name}")
-                    continue
+                print(f"Template path: {template_path}")
+
+                print(f"334: Generating report for {report.student.name}")
                 
                 # Create group-specific directory with time slot and day
                 group_name = report.tennis_group.name.replace(' ', '_').lower()
+                print(f"342: Generating report for {report.student.name}")
                 if report.programme_player and report.programme_player.group_time:
                     time = report.programme_player.group_time
                     start_time = time.start_time.strftime('%I%M%p').lower()
@@ -353,11 +364,26 @@ class EnhancedWiltonReportGenerator:
                     'teaching_period': {
                         'next_period_start_date': report.teaching_period.next_period_start_date.strftime('%Y-%m-%d') if report.teaching_period.next_period_start_date else None,
                         'bookings_open_date': report.teaching_period.bookings_open_date.strftime('%Y-%m-%d') if report.teaching_period.bookings_open_date else None
-                    }
+                    },
+                    'report': report 
                 }
                 
-                # Generate the report
-                generator.generate_report(template_path, output_path, data)
+                # Generate the report (either Wilton template or generic)
+                if template_path is None:
+                    print(f"Generating generic report for {report.student.name}")
+                    try:
+                        generator._generate_generic_report(data, output_path)
+                        print(f"Checking generated file at: {output_path}")
+                        if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+                            raise ValueError(f"Generated file is empty or missing: {output_path}")
+                    except Exception as e:
+                        errors.append(f"Error generating generic report for {report.student.name}: {str(e)}")
+                        print(f"Error generating generic report: {str(e)}")
+                        continue
+                else:
+                    print(f"Generating Wilton template report for {report.student.name}")
+                    generator.generate_report(template_path, output_path, data)
+                    
                 generated_reports.append(output_path)
                 
             except Exception as e:
@@ -369,6 +395,47 @@ class EnhancedWiltonReportGenerator:
             'error_details': errors,
             'output_directory': period_dir
         }
+    
+    def _generate_generic_report(self, data, output_path):
+        """Generate a generic report when no template/config exists."""
+        from app.utils.report_generator import create_single_report_pdf
+        
+        try:
+            # Create PDF in memory first
+            pdf_buffer = BytesIO()
+            report = data['report'] if 'report' in data else None
+            
+            if report is None:
+                raise ValueError("Report object is required for generic report generation")
+            
+            print(f"Generating generic report for {report.student.name}")
+            print(f"Report content: {report.content}")
+            ## Print all the report data
+            for key, value in data.items():
+                print(f"Data: {key} - {value}")
+
+            create_single_report_pdf(report, pdf_buffer)
+            pdf_buffer.seek(0)  # Reset buffer position
+            
+            # Ensure the content is not empty
+            content = pdf_buffer.getvalue()
+            if not content:
+                raise ValueError("Generated PDF content is empty")
+            
+            # Save to file
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            with open(output_path, 'wb') as f:
+                f.write(content)
+                
+            # Verify file was written
+            if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+                raise ValueError(f"Failed to write PDF to {output_path}")
+                
+            print(f"Successfully generated generic report at: {output_path}")
+            
+        except Exception as e:
+            print(f"Error generating generic report: {str(e)}")
+            raise  # Re-raise the exception to be caught by the caller
 
 
     def generate_report(self, template_path, output_path, data):
@@ -376,26 +443,21 @@ class EnhancedWiltonReportGenerator:
         # Get group configuration
         group_config = self.get_group_config(data['group'])
         
-        # Read the template
+        # Fall back to generic report if no template or config exists
+        if not os.path.exists(template_path) or not group_config:
+            return self._generate_generic_report(data, output_path)
+        
+        # Original Wilton report generation code remains the same
         template = PdfReader(open(template_path, "rb"))
         output = PdfWriter()
         
-        # Process each page
         for page_num in range(len(template.pages)):
-            # Get template page
             template_page = template.pages[page_num]
-            
-            # Generate and merge overlay
             overlay = self.generate_page_overlay(data, group_config, page_num + 1)
             template_page.merge_page(overlay.pages[0])
-            
-            # Add the merged page to output
             output.add_page(template_page)
         
-        # Ensure output directory exists
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        
-        # Write the output PDF
         with open(output_path, "wb") as output_file:
             output.write(output_file)
 

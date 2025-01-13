@@ -438,6 +438,7 @@ def manage_groups(club_id):
                 day = request.form.get('day_of_week')
                 start_time = request.form.get('start_time')
                 end_time = request.form.get('end_time')
+                capacity = request.form.get('capacity', type=int)  # Will be None if not provided
 
                 if not all([group_id, day, start_time, end_time]):
                     flash('All time fields are required', 'error')
@@ -453,12 +454,18 @@ def manage_groups(club_id):
                         flash('End time must be after start time', 'error')
                         return redirect(url_for('club_management.manage_groups', club_id=club_id))
 
+                    # Validate capacity if provided
+                    if capacity is not None and capacity < 1:
+                        flash('Capacity must be at least 1 if specified', 'error')
+                        return redirect(url_for('club_management.manage_groups', club_id=club_id))
+
                     # Create new time slot
                     time_slot = TennisGroupTimes(
                         group_id=group_id,
                         day_of_week=DayOfWeek[day.upper()],
                         start_time=start_time,
                         end_time=end_time,
+                        capacity=capacity,  # Can be None
                         tennis_club_id=club.id
                     )
                     db.session.add(time_slot)
@@ -469,6 +476,56 @@ def manage_groups(club_id):
                 except SQLAlchemyError as e:
                     db.session.rollback()
                     flash(f'Error adding time slot: {str(e)}', 'error')
+                
+                return redirect(url_for('club_management.manage_groups', club_id=club_id))
+
+            elif action == 'edit_time':
+                time_id = request.form.get('time_id')
+                day = request.form.get('day_of_week')
+                start_time = request.form.get('start_time')
+                end_time = request.form.get('end_time')
+                capacity = request.form.get('capacity', type=int)
+
+                if not all([time_id, day, start_time, end_time]):
+                    flash('All time fields are required', 'error')
+                    return redirect(url_for('club_management.manage_groups', club_id=club_id))
+
+                time_slot = TennisGroupTimes.query.get_or_404(time_id)
+
+                # Verify club ownership
+                if time_slot.tennis_club_id != club.id:
+                    flash('You do not have permission to edit this time slot', 'error')
+                    return redirect(url_for('club_management.manage_groups', club_id=club_id))
+
+                try:
+                    # Parse and validate times
+                    start_time = datetime.strptime(start_time, '%H:%M').time()
+                    end_time = datetime.strptime(end_time, '%H:%M').time()
+
+                    if start_time >= end_time:
+                        flash('End time must be after start time', 'error')
+                        return redirect(url_for('club_management.manage_groups', club_id=club_id))
+
+                    # Validate capacity if provided
+                    if capacity is not None and capacity < 1:
+                        flash('Capacity must be at least 1 if specified', 'error')
+                        return redirect(url_for('club_management.manage_groups', club_id=club_id))
+
+                    # Update time slot
+                    time_slot.day_of_week = DayOfWeek[day.upper()]
+                    time_slot.start_time = start_time
+                    time_slot.end_time = end_time
+                    time_slot.capacity = capacity  # Can be None
+
+                    db.session.commit()
+                    flash('Time slot updated successfully', 'success')
+                except ValueError as e:
+                    flash('Invalid time format', 'error')
+                except SQLAlchemyError as e:
+                    db.session.rollback()
+                    flash(f'Error updating time slot: {str(e)}', 'error')
+                
+                return redirect(url_for('club_management.manage_groups', club_id=club_id))
 
             elif action == 'delete_time':
                 time_id = request.form.get('time_id')
@@ -1383,10 +1440,11 @@ def get_teaching_periods():
         'end_date': period.end_date.strftime('%Y-%m-%d')
     } for period in periods])
 
-@club_management.route('/manage/<int:club_id>/logo', methods=['POST'])
+@club_management.route('/manage/<int:club_id>/upload-logo', methods=['POST'])
 @login_required
 @admin_required
 def upload_logo(club_id):
+    """Handle club logo upload"""
     current_app.logger.info(f"Starting logo upload for club {club_id}")
     
     if 'logo' not in request.files:
@@ -1471,7 +1529,33 @@ def upload_logo(club_id):
 @club_management.route('/api/clubs/<int:club_id>/logo-url')
 @login_required
 def get_logo_url(club_id):
-    club = TennisClub.query.get_or_404(club_id)
-    if club.logo_url:
-        return jsonify({'url': club.logo_presigned_url})
-    return jsonify({'error': 'No logo found'}), 404
+    """Get a fresh presigned URL for the club logo"""
+    try:
+        club = TennisClub.query.get_or_404(club_id)
+        
+        if not club.logo_url:
+            return jsonify({'error': 'No logo found'}), 404
+            
+        # Get fresh presigned URL
+        s3_client = boto3.client(
+            's3',
+            aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
+            aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
+            region_name=os.environ.get('AWS_S3_REGION')
+        )
+        
+        url = s3_client.generate_presigned_url(
+            'get_object',
+            Params={
+                'Bucket': os.environ.get('AWS_S3_BUCKET'),
+                'Key': club.logo_url,
+                'ResponseContentType': 'image/*'
+            },
+            ExpiresIn=3600
+        )
+        
+        return jsonify({'url': url})
+        
+    except Exception as e:
+        current_app.logger.error(f"Error generating logo URL: {str(e)}")
+        return jsonify({'error': 'Failed to generate URL'}), 500
