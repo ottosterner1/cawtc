@@ -91,6 +91,20 @@ class ProductionConfig(Config):
     SESSION_COOKIE_HTTPONLY = True
     REMEMBER_COOKIE_SECURE = True
     REMEMBER_COOKIE_HTTPONLY = True
+    
+    # Update CORS for your production domain
+    CORS_ORIGINS = [
+        'https://courtflow.co.uk',
+        'https://*.railway.app' 
+    ]
+    
+    # Set secure headers
+    SECURE_HEADERS = {
+        'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'SAMEORIGIN',
+        'X-XSS-Protection': '1; mode=block'
+    }
 
 
 class TestingConfig(Config):

@@ -1,9 +1,11 @@
 # app/__init__.py
-from flask import Flask
+from flask import Flask, send_from_directory, jsonify, request
 from config import Config
 import os
 from app.extensions import db, migrate, login_manager, cors
 from app.auth import init_oauth
+import sentry_sdk
+from sentry_sdk.integrations.flask import FlaskIntegration
 
 def register_extensions(app):
     """Register Flask extensions."""
@@ -12,13 +14,9 @@ def register_extensions(app):
     login_manager.init_app(app)
     init_oauth(app)
     
-    # Configure CORS
     cors.init_app(app, resources={
         r"/api/*": {
-            "origins": [
-                "http://localhost:5173",  # Vite dev server
-                "http://localhost:8000"   # Flask dev server
-            ],
+            "origins": app.config['CORS_ORIGINS'],
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             "allow_headers": ["Content-Type", "Authorization"],
             "supports_credentials": True
@@ -46,14 +44,32 @@ def configure_login_manager(app):
 
 def create_app(config_class=Config):
     """Application factory function."""
-    app = Flask(__name__)
+    # Initialize Sentry in production
+    if os.getenv('FLASK_ENV') == 'production':
+        sentry_sdk.init(
+            dsn=os.getenv('SENTRY_DSN'),
+            integrations=[FlaskIntegration()],
+            traces_sample_rate=1.0,
+            environment="production"
+        )
     
-    # Configure the app
-    app.config.from_object(config_class)
+    app = Flask(__name__, 
+                static_folder='static/dist',  # Point to React build
+                static_url_path='')
     
-    # Print debug information
-    print(f"Flask Debug Mode: {app.debug}")
-    print(f"CORS origins configured for: {app.config.get('CORS_ORIGINS', 'default origins')}")
+    # Determine environment and configure the app
+    env = os.getenv('FLASK_ENV', 'production')
+    if isinstance(config_class, dict):
+        config_obj = config_class[env]
+    else:
+        config_obj = config_class
+    
+    app.config.from_object(config_obj)
+    
+    # Print debug information (only in development)
+    if app.debug:
+        print(f"Flask Debug Mode: {app.debug}")
+        print(f"CORS origins configured for: {app.config.get('CORS_ORIGINS', 'default origins')}")
     
     # Ensure instance folder exists
     try:
@@ -69,16 +85,45 @@ def create_app(config_class=Config):
     # Set up error handlers
     @app.errorhandler(404)
     def not_found_error(error):
-        return "Page not found", 404
+        if request.path.startswith('/api/'):
+            return jsonify({"error": "Resource not found"}), 404
+        return send_from_directory(app.static_folder, 'index.html')
 
     @app.errorhandler(500)
     def internal_error(error):
         db.session.rollback()
+        if request.path.startswith('/api/'):
+            return jsonify({"error": "Internal server error"}), 500
         return "Internal server error", 500
     
-    # Add a route to test CORS
-    @app.route('/api/test-cors', methods=['GET'])
-    def test_cors():
-        return {'status': 'CORS is working'}
-        
+    # Add security headers in production
+    if not app.debug:
+        @app.after_request
+        def add_security_headers(response):
+            headers = {
+                'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+                'X-Content-Type-Options': 'nosniff',
+                'X-Frame-Options': 'SAMEORIGIN',
+                'X-XSS-Protection': '1; mode=block'
+            }
+            for header, value in headers.items():
+                response.headers[header] = value
+            return response
+    
+    # Serve React app in production
+    @app.route('/', defaults={'path': ''})
+    @app.route('/<path:path>')
+    def serve(path):
+        if path.startswith('api/'):
+            return not_found_error(None)
+        if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
+            return send_from_directory(app.static_folder, path)
+        return send_from_directory(app.static_folder, 'index.html')
+    
+    # Add a route to test CORS (development only)
+    if app.debug:
+        @app.route('/api/test-cors', methods=['GET'])
+        def test_cors():
+            return {'status': 'CORS is working'}
+    
     return app
